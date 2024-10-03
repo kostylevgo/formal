@@ -1,12 +1,14 @@
-#[derive(Clone, Debug)]
-struct Transition {
+use std::{collections::HashMap, fmt::{Display, Error, Formatter}};
+
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
+struct Transition<T> {
     to: usize,
-    str: String,
+    str: T,
 }
 
 #[derive(Clone, Debug)]
 struct NonDeterministicAutomaton {
-    transitions: Vec<Vec<Transition>>,
+    transitions: Vec<Vec<Transition<String>>>,
     starting: usize,
     is_accepting: Vec<bool>,
 }
@@ -24,6 +26,7 @@ impl NonDeterministicAutomaton {
         self.transitions[from].push(Transition {to, str});
     }
 
+    #[allow(dead_code)]
     fn remove_transition(&mut self, from: usize, to: usize, str: String) {
         let found = self.transitions[from].iter().position(|x| x.to == to && x.str == str);
         match found {
@@ -36,6 +39,7 @@ impl NonDeterministicAutomaton {
         self.is_accepting[num] = true;
     }
 
+    #[allow(dead_code)]
     fn unmark_as_accepting(&mut self, num: usize) {
         self.is_accepting[num] = false;
     }
@@ -87,6 +91,11 @@ impl NonDeterministicAutomaton {
         }).collect()
     }
 
+    fn remove_equal_transitions(&mut self, state: usize) {
+        self.transitions[state].sort();
+        self.transitions[state].dedup();
+    }
+
     fn compress_epsilon_cycles(self) -> Self {
         let epsilon_transitions = self.get_epsilon_transitions();
         let mut inverse_epsilon_transitions = vec![Vec::<usize>::new(); self.size()];
@@ -130,7 +139,10 @@ impl NonDeterministicAutomaton {
         let mut result = NonDeterministicAutomaton::new(color_counter, color[self.starting]);
         for (state, transitions) in self.transitions.into_iter().enumerate() {
             result.is_accepting[color[state]] |= self.is_accepting[state];
-            result.transitions[color[state]].extend(transitions);
+            result.transitions[color[state]].extend(transitions.into_iter().map(|transition| Transition::<String> {to: color[transition.to], str: transition.str}));
+        }
+        for state in 0..result.size() {
+            result.remove_equal_transitions(state);
         }
         result
     }
@@ -150,6 +162,7 @@ impl NonDeterministicAutomaton {
                 aut.is_accepting[state] |= aut.is_accepting[*next_state];
                 let mut copying = aut.transitions[*next_state].clone();
                 aut.transitions[state].append(&mut copying);
+                aut.remove_equal_transitions(state);
             }
         }
         for state in 0..self.size() {
@@ -160,6 +173,148 @@ impl NonDeterministicAutomaton {
     }
 }
 
-fn main() {
+#[derive(Clone, Debug)]
+struct DeterministicAutomaton {
+    transitions: Vec<Vec<Transition<char>>>,
+    starting: usize,
+    is_accepting: Vec<bool>
+}
 
+impl DeterministicAutomaton {
+    fn from(mut aut: NonDeterministicAutomaton) -> Self {
+        aut.remove_multi_character_transitions();
+        aut = aut.compress_epsilon_cycles();
+        aut.remove_epsilon_transitions();
+        let mut state_decoder: HashMap<Vec<bool>, usize> = HashMap::new();
+        let mut is_accepting = Vec::<bool>::new();
+        let mut transitions = Vec::<Vec<Transition<char>>>::new();
+        let mut register_state = |state: &Vec<bool>, transitions: &mut Vec<Vec<Transition<char>>>| -> (usize, bool) {
+            if state_decoder.contains_key(state) {
+                (state_decoder[state], false)
+            } else {
+                let new_num = state_decoder.len();
+                transitions.push(Vec::<Transition<char>>::new());
+                is_accepting.push(state.iter().enumerate().any(|(state, is_present)| *is_present && aut.is_accepting[state]));
+                state_decoder.insert(state.clone(), new_num);
+                (new_num, true)
+            }
+        };
+        let starting_state: Vec<bool> = (0..aut.size()).map(|state| state == aut.starting).collect();
+        let starting_state_index = register_state(&starting_state, &mut transitions).0;
+        let mut bfs_vec = Vec::<(usize, Vec<bool>)>::new();
+        bfs_vec.push((starting_state_index, starting_state));
+        let mut index = 0;
+        while index < bfs_vec.len() {
+            let (state_index, state) = bfs_vec[index].clone();
+            index += 1;
+            let mut options = Vec::<char>::new();
+            for old_state in 0..aut.size() {
+                if !state[old_state] {
+                    continue;
+                }
+                for transition in aut.transitions[old_state].iter() {
+                    options.push(transition.str.chars().nth(0).unwrap());
+                }
+            }
+            options.sort();
+            options.dedup();
+            for char in options.iter() {
+                let mut next_state = vec![false; aut.size()];
+                for old_state in 0..aut.size() {
+                    if !state[old_state] {
+                        continue;
+                    }
+                    for transition in aut.transitions[old_state].iter() {
+                        if transition.str.chars().nth(0).unwrap() == *char {
+                            next_state[transition.to] = true;
+                        }
+                    }
+                }
+                let res = register_state(&next_state, &mut transitions);
+                transitions[state_index].push(Transition::<char> {to: res.0, str: *char});
+                if res.1 {
+                    bfs_vec.push((res.0, next_state));
+                }
+            }
+        }
+        Self {
+            transitions,
+            starting: 0,
+            is_accepting,
+        }
+    }
+
+    fn size(&self) -> usize {
+        self.is_accepting.len()
+    }
+}
+
+impl Display for NonDeterministicAutomaton {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match write!(f, "size: {}, starting: {}, accepting: ", self.size(), self.starting) {
+            Err(some) => return Result::Err(some),
+            _ => ()
+        }
+        for state in 0..self.size() {
+            if self.is_accepting[state] {
+                match write!(f, "{}, ", state) {
+                    Err(some) => return Result::Err(some),
+                    _ => ()
+                }
+            }
+        }
+        match write!(f, "\n") {
+            Err(some) => return Result::Err(some),
+            _ => ()
+        }
+        for state in 0..self.size() {
+            for transition in self.transitions[state].iter() {
+                match write!(f, "<{}, {}> -> {}\n", state, transition.str, transition.to) {
+                    Err(some) => return Result::Err(some),
+                    _ => (),
+                }
+            }
+        }
+        Result::Ok(())
+    }
+}
+
+impl Display for DeterministicAutomaton {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match write!(f, "size: {}, starting: {}, accepting: ", self.size(), self.starting) {
+            Err(some) => return Result::Err(some),
+            _ => ()
+        }
+        for state in 0..self.size() {
+            if self.is_accepting[state] {
+                match write!(f, "{}, ", state) {
+                    Err(some) => return Result::Err(some),
+                    _ => ()
+                }
+            }
+        }
+        match write!(f, "\n") {
+            Err(some) => return Result::Err(some),
+            _ => ()
+        }
+        for state in 0..self.size() {
+            for transition in self.transitions[state].iter() {
+                match write!(f, "<{}, {}> -> {}\n", state, transition.str, transition.to) {
+                    Err(some) => return Result::Err(some),
+                    _ => (),
+                }
+            }
+        }
+        Result::Ok(())
+    }
+}
+
+fn main() {
+    let mut aut = NonDeterministicAutomaton::new(2, 0);
+    aut.add_transition(0, 0, "ab".to_string());
+    aut.add_transition(0, 1, String::new());
+    aut.add_transition(1, 1, "aab".to_string());
+    aut.mark_as_accepting(1);
+    let aut = DeterministicAutomaton::from(aut);
+    println!("{}\n", aut);
 }
