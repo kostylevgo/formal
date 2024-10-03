@@ -12,5 +12,7 @@ fn main() {
     aut.mark_as_accepting(1);
     // stop entering
     let aut = DeterministicAutomaton::from(aut);
-    println!("{}\n{}", aut, aut.check_word(&"aab".to_string()));
+    println!("{}", aut);
+    let check = aut.check_word(&"aab".to_string());
+    println!("{}", check);
 }
