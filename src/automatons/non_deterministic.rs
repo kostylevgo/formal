@@ -89,7 +89,8 @@ impl NonDeterministicAutomaton {
         }
         let mut used = vec![false; self.size()];
         let mut pseudo_top_sort = Vec::<usize>::new();
-        fn pseudo_top_sort_dfs(graph: &Vec<Vec<usize>>, used: &mut Vec<bool>, result: &mut Vec<usize>, state: usize) {
+        fn pseudo_top_sort_dfs(graph: &Vec<Vec<usize>>, used: &mut Vec<bool>,
+                result: &mut Vec<usize>, state: usize) {
             used[state] = true;
             for next_state in graph[state].iter() {
                 if !used[*next_state] {
@@ -100,7 +101,8 @@ impl NonDeterministicAutomaton {
         }
         for state in 0..self.size() {
             if !used[state] {
-                pseudo_top_sort_dfs(&inverse_epsilon_transitions, &mut used, &mut pseudo_top_sort, state);
+                pseudo_top_sort_dfs(&inverse_epsilon_transitions, &mut used,
+                    &mut pseudo_top_sort, state);
             }
         }
         let mut color = vec![usize::MAX; self.size()];
@@ -122,7 +124,9 @@ impl NonDeterministicAutomaton {
         let mut result = NonDeterministicAutomaton::new(color_counter, color[self.starting]);
         for (state, transitions) in self.transitions.into_iter().enumerate() {
             result.is_accepting[color[state]] |= self.is_accepting[state];
-            result.transitions[color[state]].extend(transitions.into_iter().map(|transition| Transition::<String> {to: color[transition.to], str: transition.str}));
+            result.transitions[color[state]].extend(transitions.into_iter().map(|transition|
+                Transition::<String> {to: color[transition.to], str: transition.str}
+            ));
         }
         for state in 0..result.size() {
             result.remove_equal_transitions(state);
@@ -140,7 +144,8 @@ impl NonDeterministicAutomaton {
             transitions.retain(|transition| transition.str.len() != 0);
         }
         let mut used = vec![false; self.size()];
-        fn propagation_dfs(aut: &mut NonDeterministicAutomaton, used: &mut Vec<bool>, epsilon_transitions: &Vec<Vec<usize>>, state: usize) {
+        fn propagation_dfs(aut: &mut NonDeterministicAutomaton, used: &mut Vec<bool>,
+                epsilon_transitions: &Vec<Vec<usize>>, state: usize) {
             used[state] = true;
             for next_state in epsilon_transitions[state].iter() {
                 if !used[*next_state] {
@@ -182,7 +187,8 @@ impl NonDeterministicAutomaton {
 pub mod tests {
     use super::*;
 
-    pub fn make_testing_aut() -> NonDeterministicAutomaton { // makes automaton for regular expression (ab)*(aab)*
+    // makes automaton for regular expression (ab)*(aab)*
+    pub fn make_testing_aut() -> NonDeterministicAutomaton {
         let mut aut = NonDeterministicAutomaton::new(2, 0);
         aut.add_transition(0, 0, "ab".to_string());
         aut.add_transition(0, 1, String::new());

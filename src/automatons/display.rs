@@ -3,7 +3,8 @@ use crate::automatons::*;
 use non_deterministic::{Transition, NonDeterministicAutomaton};
 use deterministic::DeterministicAutomaton;
 
-fn print_automaton_like(size: usize, starting: usize, is_accepting: &Vec<bool>, transitions: &Vec<Vec<Transition<impl Display>>>, f: &mut Formatter) -> Result<(), Error> {
+fn print_automaton_like(size: usize, starting: usize, is_accepting: &Vec<bool>,
+        transitions: &Vec<Vec<Transition<impl Display>>>, f: &mut Formatter) -> Result<(), Error> {
     match write!(f, "size: {}, starting: {}, accepting: ", size, starting) {
         Err(some) => return Result::Err(some),
         _ => ()

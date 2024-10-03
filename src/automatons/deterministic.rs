@@ -16,13 +16,16 @@ impl DeterministicAutomaton {
         let mut state_decoder: HashMap<Vec<bool>, usize> = HashMap::new();
         let mut is_accepting = Vec::<bool>::new();
         let mut transitions = Vec::<Vec<Transition<char>>>::new();
-        let mut register_state = |state: &Vec<bool>, transitions: &mut Vec<Vec<Transition<char>>>| -> (usize, bool) {
+        let mut register_state = |state: &Vec<bool>,
+                transitions: &mut Vec<Vec<Transition<char>>>| -> (usize, bool) {
             if state_decoder.contains_key(state) {
                 (state_decoder[state], false)
             } else {
                 let new_num = state_decoder.len();
                 transitions.push(Vec::<Transition<char>>::new());
-                is_accepting.push(state.iter().enumerate().any(|(state, is_present)| *is_present && aut.is_accepting[state]));
+                is_accepting.push(state.iter().enumerate().any(|(state, is_present)|
+                    *is_present && aut.is_accepting[state]
+                ));
                 state_decoder.insert(state.clone(), new_num);
                 (new_num, true)
             }
