@@ -8,3 +8,7 @@ edition = "2021"
 [[bin]]
 name = "task-deterministic"
 path = "src/task-deterministic.rs"
+
+[[bin]]
+name = "task-regular-parsing"
+path = "src/task-regular-parsing.rs"
