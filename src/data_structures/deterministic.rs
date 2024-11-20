@@ -119,6 +119,10 @@ impl DeterministicAutomaton {
         }
         self.is_accepting[state]
     }
+
+    pub fn into_fields(self) -> (Graph<char>, usize, Vec<bool>) {
+        (self.graph, self.starting, self.is_accepting)
+    }
 }
 
 #[cfg(test)]

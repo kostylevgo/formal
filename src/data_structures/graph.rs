@@ -151,3 +151,89 @@ impl<T: PartialEq> DerivedFromGraphMut<T> for Graph<T> {
         self
     }
 }
+
+impl<T> Graph<T> {
+    pub fn retain<F>(&mut self, mut pred: F)
+    where
+        F: FnMut((usize, usize, &T)) -> bool
+    {
+        for i in 0..self.size() {
+            self.edges[i].retain(|x| pred((i, x.to, &x.value)));
+        }
+    }
+}
+
+impl<T: Clone> Graph<T> {
+    pub fn reversed_graph(self) -> Self {
+        let mut res = Self::with_size(self.size());
+        for (i, edges) in self.edges.into_iter().enumerate() {
+            for edge in edges.into_iter() {
+                res.add_edge(edge.to, i, edge.value);
+            }
+        }
+        res
+    }
+
+    pub fn kosaraju(&self) -> Vec<usize> {
+        // Finds strongly connected components
+        // Returns color: color[u] == color[v] <=> u and v are in the same component
+        let my_clone = (*self).clone();
+        let reverse_graph = my_clone.reversed_graph();
+        let mut used = vec![false; self.size()];
+        let mut pseudo_top_sort = Vec::<usize>::new();
+        fn pseudo_top_sort_dfs<U>(graph: &Graph<U>, used: &mut Vec<bool>,
+                result: &mut Vec<usize>, state: usize) {
+            used[state] = true;
+            for next_state in graph.edges[state].iter() {
+                if !used[next_state.to] {
+                    pseudo_top_sort_dfs(graph, used, result, next_state.to);
+                }
+            }
+            result.push(state);
+        }
+        for state in 0..self.size() {
+            if !used[state] {
+                pseudo_top_sort_dfs(&reverse_graph, &mut used,
+                    &mut pseudo_top_sort, state);
+            }
+        }
+        let mut color = vec![usize::MAX; self.size()];
+        let mut color_counter = 0;
+        fn coloring_dfs<U>(graph: &Graph<U>, colors: &mut Vec<usize>, state: usize, color: usize) {
+            colors[state] = color;
+            for next_state in graph.edges[state].iter() {
+                if colors[next_state.to] == usize::MAX {
+                    coloring_dfs(graph, colors, next_state.to, color);
+                }
+            }
+        }
+        for state in pseudo_top_sort.iter().rev() {
+            if color[*state] == usize::MAX {
+                coloring_dfs(self, &mut color, *state, color_counter);
+                color_counter += 1;
+            }
+        }
+        color
+    }
+}
+
+impl<T: Ord> Graph<T> {
+    pub fn remove_equal_edges(&mut self, vertex: usize) {
+        self.edges[vertex].sort();
+        self.edges[vertex].dedup();
+    }
+
+    pub fn compress(self, color: &Vec<usize>) -> Self {
+        let mx = color.iter().fold(color[0], |a, b| std::cmp::max(a, *b));
+        let mut res = Self::with_size(mx + 1);
+        for (i, edges) in self.edges.into_iter().enumerate() {
+            for edge in edges.into_iter() {
+                res.add_edge(color[i], color[edge.to], edge.value);
+            }
+        }
+        for vertex in 0..res.size() {
+            res.remove_equal_edges(vertex);
+        }
+        res
+    }
+}

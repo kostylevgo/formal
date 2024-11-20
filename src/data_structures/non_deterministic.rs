@@ -129,57 +129,16 @@ impl NonDeterministicAutomaton {
 
     pub fn compress_epsilon_cycles(self) -> Self {
         let epsilon_transitions = self.get_epsilon_transitions();
-        let mut inverse_epsilon_transitions = vec![Vec::<usize>::new(); self.size()];
-        for state in 0..self.size() {
-            for next_state in epsilon_transitions[state].iter() {
-                inverse_epsilon_transitions[*next_state].push(state);
-            }
+        let strongly_connected_components = epsilon_transitions.kosaraju();
+        let mut new_accepting = vec![false; self.size()];
+        for (i, val) in self.is_accepting.into_iter().enumerate() {
+            new_accepting[strongly_connected_components[i]] |= val;
         }
-        let mut used = vec![false; self.size()];
-        let mut pseudo_top_sort = Vec::<usize>::new();
-        fn pseudo_top_sort_dfs(graph: &Vec<Vec<usize>>, used: &mut Vec<bool>,
-                result: &mut Vec<usize>, state: usize) {
-            used[state] = true;
-            for next_state in graph[state].iter() {
-                if !used[*next_state] {
-                    pseudo_top_sort_dfs(graph, used, result, *next_state);
-                }
-            }
-            result.push(state);
+        Self {
+            graph: self.graph.compress(&strongly_connected_components),
+            starting: strongly_connected_components[self.starting],
+            is_accepting: new_accepting
         }
-        for state in 0..self.size() {
-            if !used[state] {
-                pseudo_top_sort_dfs(&inverse_epsilon_transitions, &mut used,
-                    &mut pseudo_top_sort, state);
-            }
-        }
-        let mut color = vec![usize::MAX; self.size()];
-        let mut color_counter = 0;
-        fn coloring_dfs(graps: &Vec<Vec<usize>>, colors: &mut Vec<usize>, state: usize, color: usize) {
-            colors[state] = color;
-            for next_state in graps[state].iter() {
-                if colors[*next_state] == usize::MAX {
-                    coloring_dfs(graps, colors, *next_state, color);
-                }
-            }
-        }
-        for state in pseudo_top_sort.iter().rev() {
-            if color[*state] == usize::MAX {
-                coloring_dfs(&epsilon_transitions, &mut color, *state, color_counter);
-                color_counter += 1;
-            }
-        }
-        let mut result = NonDeterministicAutomaton::with_size(color_counter, color[self.starting]);
-        for (state, transitions) in self.graph.into_edges().into_iter().enumerate() {
-            result.is_accepting[color[state]] |= self.is_accepting[state];
-            for edge in transitions.into_iter() {
-                result.graph.add_edge(color[state], color[edge.to], edge.value);
-            }
-        }
-        for state in 0..result.size() {
-            result.remove_equal_transitions(state);
-        }
-        result
     }
 
     /*
@@ -192,17 +151,17 @@ impl NonDeterministicAutomaton {
             transitions.retain(|transition| transition.value.len() != 0);
         }
         let mut used = vec![false; self.size()];
-        fn propagation_dfs(aut: &mut NonDeterministicAutomaton, used: &mut Vec<bool>,
-                epsilon_transitions: &Vec<Vec<usize>>, state: usize) {
+        fn propagation_dfs<U>(aut: &mut NonDeterministicAutomaton, used: &mut Vec<bool>,
+                epsilon_transitions: &Graph<U>, state: usize) {
             used[state] = true;
-            for next_state in epsilon_transitions[state].iter() {
-                if !used[*next_state] {
-                    propagation_dfs(aut, used, epsilon_transitions, *next_state);
+            for next_state in epsilon_transitions.get_edges(state).iter() {
+                if !used[next_state.to] {
+                    propagation_dfs(aut, used, epsilon_transitions, next_state.to);
                 }
-                aut.is_accepting[state] |= aut.is_accepting[*next_state];
-                let mut copying = aut.get_edges(*next_state).clone();
+                aut.is_accepting[state] |= aut.is_accepting[next_state.to];
+                let mut copying = aut.get_edges(next_state.to).clone();
                 aut.get_edges_mut(state).append(&mut copying);
-                aut.remove_equal_transitions(state);
+                aut.graph.remove_equal_edges(state);
             }
         }
         for state in 0..self.size() {
@@ -212,22 +171,10 @@ impl NonDeterministicAutomaton {
         }
     }
 
-    fn get_epsilon_transitions(&self) -> Vec<Vec<usize>> {
-        self.graph.get_edges_list().iter().map(|transitions| {
-            let res = transitions.iter().filter_map(|transition| {
-                if transition.value.len() == 0 {
-                    Some(transition.to)
-                } else {
-                    None
-                }
-            }).collect();
-            res
-        }).collect()
-    }
-
-    fn remove_equal_transitions(&mut self, state: usize) {
-        self.get_edges_mut(state).sort();
-        self.get_edges_mut(state).dedup();
+    fn get_epsilon_transitions(&self) -> Graph<String> {
+        let mut res = self.graph.clone();
+        res.retain(|x| x.2.len() == 0);
+        res
     }
 }
 

@@ -117,7 +117,6 @@ impl SingleAcceptingAutomaton {
     }
 
     pub fn into_non_deterministic(self) -> NonDeterministicAutomaton {
-        let size = self.size();
         let mut res = NonDeterministicAutomaton::from_graph(self.graph, self.starting);
         res.mark_as_accepting(self.accepting);
         res
@@ -127,7 +126,7 @@ impl SingleAcceptingAutomaton {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::{automaton_like::DisplayableLikeAutomaton, non_deterministic::tests::make_testing_aut};
+    use crate::non_deterministic::tests::make_testing_aut;
 
     #[test]
     fn test_already_single() {
