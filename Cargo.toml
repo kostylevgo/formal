@@ -12,3 +12,11 @@ path = "src/task-deterministic.rs"
 [[bin]]
 name = "task-regular-parsing"
 path = "src/task-regular-parsing.rs"
+
+[[bin]]
+name = "task-earley"
+path = "src/task-earley.rs"
+
+[[bin]]
+name = "task-lr1"
+path = "src/task-lr1.rs"
