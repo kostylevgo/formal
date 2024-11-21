@@ -52,4 +52,55 @@ impl RegularExpression {
             Ok(stack.pop().unwrap())
         }
     }
+
+    pub fn to_string(self) -> String {
+        match self {
+            RegularExpression::Zero => String::from("0"),
+            RegularExpression::One => String::from("1"),
+            RegularExpression::Letter(ch) => ch.to_string(),
+            RegularExpression::Sum((lhs, rhs)) => {
+                format!("({} + {})", lhs.to_string(), rhs.to_string())
+            },
+            RegularExpression::Concatenation((lhs, rhs)) => {
+                format!("({}{})", lhs.to_string(), rhs.to_string())
+            }
+            RegularExpression::Iteration(val) => {
+                format!("{}*", val.to_string())
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic]
+    fn test_fail1() {
+        let _ = RegularExpression::from_reverse_polish(&"ab".to_string()).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_fail2() {
+        let _ = RegularExpression::from_reverse_polish(&"c++".to_string()).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_fail3() {
+        let _ = RegularExpression::from_reverse_polish(&"mmm...".to_string()).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_fail4() {
+        let _ = RegularExpression::from_reverse_polish(&"*iz*e**".to_string()).unwrap();
+    }
+
+    #[test]
+    fn test_ok() {
+        let _ = RegularExpression::from_reverse_polish(&"xy+z.*".to_string()).unwrap();
+    }
 }

@@ -78,6 +78,12 @@ fn solve(str: String, letter: char, count: usize) -> Result<bool, String> {
         }
     }
     for i in 0..graph.size() {
+        match used[i] {
+            Reachability::Unreachable => {
+                continue;
+            }
+            _ => ()
+        }
         if longest_path[i] == usize::MAX {
             longest_path_dfs(&graph, &mut longest_path, i);
         }
@@ -88,9 +94,6 @@ fn solve(str: String, letter: char, count: usize) -> Result<bool, String> {
     Ok(false)
 }
 
-// ab + c.aba. * .bac. + . + * a 4
-// acb..bab.c. * .ab.ba. + . + *a. b 2
-
 fn main() {
     let mut input = String::new();
     std::io::stdin().read_line(&mut input).expect("Failed to read line");
@@ -98,10 +101,45 @@ fn main() {
     let count: usize = input.next_back().expect("Not enought input").parse().expect("Wrong input format");
     let letter: char = input.next_back().expect("Not enought input").parse().expect("Wrong input format");
     let reverse_polish = input.collect();
-    println!("{}", reverse_polish);
     if solve(reverse_polish, letter, count).expect("Error") {
         println!("YES");
     } else {
         println!("NO");
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use crate::reg_exp::RegularExpression;
+
+    use super::solve;
+
+    #[test]
+    fn test_first_sample() {
+        let polish = String::from("ab+c.aba.*.bac.+.+*");
+        assert!(RegularExpression::from_reverse_polish(&polish).unwrap().to_string() == "(((a + b)c) + ((a(ba)*)(b + (ac))))*");
+        assert!(solve(polish.clone(), 'a', 3).expect("") == false);
+        assert!(solve(polish, 'a', 2).expect("") == true);
+    }
+
+    #[test]
+    fn test_second_sample() {
+        let polish = String::from("acb..bab.c.*.ab.ba.+.+*a.");
+        assert!(RegularExpression::from_reverse_polish(&polish).unwrap().to_string() == "(((a(cb)) + ((b((ab)c)*)((ab) + (ba))))*a)");
+        assert!(solve(polish.clone(), 'b', 3).expect("") == true);
+        assert!(solve(polish, 'b', 4).expect("") == false);
+    }
+
+    #[test]
+    fn test_zero() {
+        assert!(RegularExpression::from_reverse_polish(&String::from("0")).unwrap().to_string() == String::from("0"));
+        assert!(solve(String::from("0"), 'a', 0).expect("") == false);
+    }
+
+    #[test]
+    fn test_one() {
+        assert!(RegularExpression::from_reverse_polish(&String::from("1")).unwrap().to_string() == String::from("1"));
+        assert!(solve(String::from("1"), 'a', 0).expect("") == true);
+        assert!(solve(String::from("1"), 'a', 1).expect("") == false);
     }
 }

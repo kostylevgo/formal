@@ -18,12 +18,6 @@ impl<T> Graph<T> {
         }
     }
 
-    pub fn from(vec: Vec<Vec<Edge<T>>>) -> Graph<T> {
-        Self {
-            edges: vec
-        }
-    }
-
     pub fn with_size(sz: usize) -> Graph<T> {
         Self {
             edges: (0..sz).map(|_| Vec::new()).collect()
@@ -65,10 +59,6 @@ impl<T> Graph<T> {
     pub fn get_edges_list_mut(&mut self) -> &mut Vec<Vec<Edge<T>>> {
         &mut self.edges
     }
-
-    pub fn into_edges(self) -> Vec<Vec<Edge<T>>> {
-        self.edges
-    }
 }
 
 impl<T: PartialEq> Graph<T> {
@@ -84,6 +74,10 @@ impl<T: PartialEq> Graph<T> {
 impl<T: Display> Display for Graph<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let size = self.size();
+        match write!(f, "size: {}\n", size) {
+            Err(some) => return Result::Err(some),
+            _ => (),
+        }
         for state in 0..size {
             for transition in self.get_edges(state).iter() {
                 match write!(f, "<{}, {}> -> {}\n", state, transition.value, transition.to) {

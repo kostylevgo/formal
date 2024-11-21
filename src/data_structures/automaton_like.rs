@@ -9,7 +9,7 @@ pub trait AutomatonLike<T>: DerivedFromGraph<T> {
 
 pub trait DisplayableLikeAutomaton<T: Display>: AutomatonLike<T> {
     fn display_like_automaton(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match write!(f, "size: {}, starting: {}, accepting: ", self.size(), self.get_starting()) {
+        match write!(f, "starting: {}, accepting: ", self.get_starting()) {
             Err(some) => return Result::Err(some),
             _ => ()
         }

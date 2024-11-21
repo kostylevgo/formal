@@ -155,4 +155,12 @@ pub mod tests {
             assert!(new_det_aut.is_accepting(i) == old_det_aut.is_accepting(i));
         }
     }
+
+    #[test]
+    fn test_automaton_like() {
+        let aut = make_testing_aut().into_single_accepting();
+        assert!(aut.get_starting() == 0);
+        assert!(aut.is_accepting(1));
+        assert!(!aut.is_accepting(0));
+    }
 }

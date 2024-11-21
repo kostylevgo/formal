@@ -199,6 +199,7 @@ pub mod tests {
         assert!(aut.size() == 1);
         aut.add_vertex();
         assert!(aut.size() == 2);
+        assert!(aut.len() == 2);
 
         assert!(aut.get_edges(0).len() == 0);
         aut.add_edge(0, 1, "aba".to_string());
@@ -257,5 +258,24 @@ pub mod tests {
         aut.add_edge(1, 0, String::new());
         let aut = NonDeterministicAutomaton::compress_epsilon_cycles(aut);
         assert!(aut.size() == 1);
+    }
+
+    #[test]
+    fn test_output() {
+        let aut = make_testing_aut();
+        let str = format!("{}", aut);
+        let substrs = vec!["->", "starting", "accepting", "size"];
+        let mut used_substrs: Vec<(String, usize)> = substrs.into_iter().map(|x| (String::from(x), 0)).collect();
+        for i in 0..str.len() {
+            for (substr, cnt) in used_substrs.iter_mut() {
+                if i + substr.len() <= str.len() && str[i..i + substr.len()] == *substr {
+                    *cnt += 1;
+                }
+            }
+        }
+        assert!(used_substrs[0].1 == 3);
+        assert!(used_substrs[1].1 == 1);
+        assert!(used_substrs[2].1 == 1);
+        assert!(used_substrs[3].1 == 1);
     }
 }

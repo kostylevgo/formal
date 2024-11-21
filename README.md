@@ -20,6 +20,6 @@ cargo install cargo-llvm-cov
 ```
 и запустите
 ```
-cargo llvm-cov --html
+cargo llvm-cov --html --ignore-filename-regex "task-"
 ```
-Результаты можно будет увидеть в `./target/llvm-cov/html`.
+Результаты можно будет увидеть в `./target/llvm-cov/html`. Line Coverage составляет 95%. Покрыты все функции, кроме некоторых функций вывода автоматов в поток вывода и строк, обрабатывающих ошибки, возникающие при этом выводе.
