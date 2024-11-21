@@ -23,6 +23,7 @@ fn main() {
     // stop entering
     let aut = DeterministicAutomaton::from(aut);
     println!("{}\n", aut);
+    println!("{}\n", aut);
     let check = aut.check_word(&"aab".to_string());
     println!("{}", check);
 }

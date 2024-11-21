@@ -74,16 +74,10 @@ impl<T: PartialEq> Graph<T> {
 impl<T: Display> Display for Graph<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let size = self.size();
-        match write!(f, "size: {}\n", size) {
-            Err(some) => return Result::Err(some),
-            _ => (),
-        }
+        write!(f, "size: {}\n", size)?;
         for state in 0..size {
             for transition in self.get_edges(state).iter() {
-                match write!(f, "<{}, {}> -> {}\n", state, transition.value, transition.to) {
-                    Err(some) => return Result::Err(some),
-                    _ => (),
-                }
+                write!(f, "<{}, {}> -> {}\n", state, transition.value, transition.to)?;
             }
         }
         Result::Ok(())

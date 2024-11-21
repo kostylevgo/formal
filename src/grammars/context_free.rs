@@ -1,4 +1,6 @@
-use std::{collections::HashMap, iter};
+use std::collections::HashMap;
+use std::io::BufRead;
+use std::fmt::{Formatter, Display};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NonTerminal {
@@ -17,21 +19,26 @@ pub struct GrammarRule {
     pub right: Vec<Symbol>
 }
 
+impl GrammarRule {
+    pub fn new(left: NonTerminal, right: Vec<Symbol>) -> GrammarRule {
+        Self {
+            left,
+            right
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct NonTerminalManager {
     count: usize,
     letter_codes: HashMap<char, usize>
 }
 
-// #[derive(Clone, Debug)]
-// struct RuleStorage {
-//     rules: HashMap<NonTerminal, Vec<Vec<Symbol>>>
-// }
-
 #[derive(Clone, Debug)]
-struct Grammar {
+pub struct Grammar {
     manager: NonTerminalManager,
-    storage: HashMap<NonTerminal, Vec<GrammarRule>>
+    rules: HashMap<NonTerminal, Vec<GrammarRule>>,
+    pub starting: NonTerminal
 }
 
 impl NonTerminalManager {
@@ -39,6 +46,17 @@ impl NonTerminalManager {
         Self {
             count: 0,
             letter_codes: HashMap::new()
+        }
+    }
+
+    pub fn get_count(&self) -> usize {
+        self.count
+    }
+
+    pub fn new_non_terminal(&mut self) -> NonTerminal {
+        self.count += 1;
+        NonTerminal {
+            id: self.count - 1
         }
     }
 
@@ -54,15 +72,9 @@ impl NonTerminalManager {
         }
     }
 
-    pub fn new_non_terminal(&mut self) -> NonTerminal {
-        self.count += 1;
-        NonTerminal {
-            id: self.count - 1
-        }
-    }
-
     pub fn to_rule(&mut self, str: &String) -> Option<GrammarRule> {
-        let mut iter = str.split("->");
+        let str_trimmed = str.chars().filter(|x| !x.is_whitespace()).collect::<String>();
+        let mut iter = str_trimmed.split("->");
         let left_part: String = match iter.next() {
             None => return None,
             Some(str) => {
@@ -79,41 +91,136 @@ impl NonTerminalManager {
             return None;
         }
         let left_part = self.to_non_terminal(left_part.chars().nth(0).unwrap());
-        let right_part = right_part.chars().map(|x| if x.is_ascii_lowercase() {Symbol::Terminal(x)} else {Symbol::NonTerminal(self.to_non_terminal(x))}).collect();
-        Some(GrammarRule {
-            left: left_part,
-            right: right_part
-        })
+        let right_part = right_part.chars().map(|x| if x.is_ascii_uppercase() {Symbol::NonTerminal(self.to_non_terminal(x))} else {Symbol::Terminal(x)}).collect();
+        Some(GrammarRule::new(left_part, right_part))
     }
 }
 
-// impl RuleStorage {
-//     fn make_vec(&mut self, non_terminal: NonTerminal) {
-//         if !self.rules.contains_key(&rule.left) {
-//             self.rules.insert(rule.left, Vec::new());
-//         }
-//     }
+impl Grammar {
+    pub fn new() -> Grammar {
+        let mut manager = NonTerminalManager::new();
+        let starting = manager.new_non_terminal();
+        let mut rules = HashMap::new();
+        rules.insert(starting, Vec::new());
+        Self {
+            manager,
+            rules,
+            starting
+        }
+    }
 
-//     pub fn new() -> RuleStorage {
-//         Self {
-//             rules: HashMap::new()
-//         }
-//     }
+    pub fn add_rule(&mut self, rule: GrammarRule) {
+        self.rules.get_mut(&rule.left).unwrap().push(rule);
+    }
 
-//     pub fn add_rule(&mut self, rule: GrammarRule) {
-//         self.make_vec(rule.left);
-//         self.rules.get_mut(&rule.left).unwrap().push(rule.right);
-//     }
+    pub fn get_rules(&self, starts_with: NonTerminal) -> &Vec<GrammarRule> {
+        self.rules.get(&starts_with).unwrap()
+    }
 
-//     pub fn iter_rules_with_left(&mut self, left: NonTerminal) -> impl Iterator {
-//         self.make_vec(left);
-//         self.rules.get(&left).unwrap().iter().map(|x| GrammarRule {
-//             left: left,
-//             right: x
-//         })
-//     }
+    pub fn new_non_terminal(&mut self) -> NonTerminal {
+        let res = self.manager.new_non_terminal();
+        self.rules.insert(res, Vec::new());
+        res
+    }
 
-//     pub fn iter(&self) -> impl Iterator {
-        
-//     }
-// }
+    pub fn read(source: &mut impl BufRead) -> Result<Grammar, String> {
+        let mut read_line = || -> Option<String> {
+            let mut buf = String::new();
+            match source.read_line(&mut buf) {
+                Err(_) => None,
+                Ok(_) => Some(buf)
+            }
+        };
+        let first_line = read_line();
+        let cnt_rules = match first_line {
+            None => {
+                return Err("rules count not found".to_string());
+            }
+            Some(str) => {
+                match String::from(str).split_whitespace().next_back() {
+                    None => return Err("rules count not found".to_string()),
+                    Some(x) => {
+                        x.parse::<usize>()
+                    }
+                }
+            }
+        };
+        let cnt_rules = match cnt_rules {
+            Err(_) => return Err("rules count not found".to_string()),
+            Ok(value) => value
+        };
+        for _ in 0..2 {
+            match read_line() {
+                None => return Err("alphabet not found".to_string()),
+                _ => ()
+            }
+        }
+        let mut manager = NonTerminalManager::new();
+        let rules = (0..cnt_rules).map(|_| {
+            read_line().and_then(|x| manager.to_rule(&x))
+        }).collect::<Vec<Option<GrammarRule>>>();
+        let starting_char = match read_line() {
+            None => return Err("starting non-terminal not found".to_string()),
+            Some(some) => {
+                if some.len() == 0 {
+                    return Err("starting non-terminal not found".to_string());
+                }
+                some.chars().nth(0).unwrap()
+            }
+        };
+        let starting = manager.to_non_terminal(starting_char);
+        let mut rules_map = HashMap::new();
+        for id in 0..manager.get_count() {
+            rules_map.insert(NonTerminal {id}, Vec::new());
+        }
+        let mut res = Self {
+            manager,
+            rules: rules_map,
+            starting
+        };
+        for (index, rule) in rules.into_iter().enumerate() {
+            match rule {
+                None => return Err(format!("error while parsing rule {}", index + 1)),
+                Some(rule) => res.add_rule(rule),
+            }
+        }
+        Ok(res)
+    }
+}
+
+impl Display for NonTerminal {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.id < 26 {write!(f, "{}", (('A' as u8 + self.id as u8) as char).to_string())} else {write!(f, "<{}>", self.id)}
+    }
+}
+
+impl Display for GrammarRule {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} -> |", self.left)?;
+        for symbol in self.right.iter() {
+            match symbol {
+                Symbol::NonTerminal(non_terminal) => {
+                    write!(f, "{}", non_terminal)?;
+                }
+                Symbol::Terminal(ch) => {
+                    write!(f, "{}", ch.to_string())?;
+                }
+            }
+        }
+        write!(f, "|")
+    }
+}
+
+impl Display for Grammar {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "starting: {}\n", self.starting)?;
+        let count = self.manager.get_count();
+        for id in 0..count {
+            let left = NonTerminal {id};
+            for rule in self.rules.get(&left).unwrap().iter() {
+                write!(f, "{}\n", rule)?;
+            }
+        }
+        std::fmt::Result::Ok(())
+    }
+}

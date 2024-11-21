@@ -1,14 +1,260 @@
+use std::collections::HashSet;
+
+use std::ops::Index;
+
 use super::context_free::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GrammarSituation<'a> {
     rule: &'a GrammarRule,
-    point: usize
+    pub point: usize
 }
 
-#[derive(Clone, Debug)]
-struct EarleySituation<'a, 'b> {
-    base: GrammarSituation<'a>,
-    word: &'b String,
-    index: usize
+impl<'a> GrammarSituation<'a> {
+    pub fn new(rule: &'a GrammarRule, point: usize) -> Self {
+        Self {
+            rule,
+            point
+        }
+    }
+}
+
+trait DerivedFromGrammarSituation {
+    fn get_field(&self) -> &GrammarSituation;
+
+    fn next(&self) -> Option<Symbol> {
+        let situation = self.get_field();
+        if situation.point == situation.rule.right.len() {
+            None
+        } else {
+            Some(situation.rule.right[situation.point])
+        }
+    }
+}
+
+impl<'a> DerivedFromGrammarSituation for GrammarSituation<'a> {
+    fn get_field(&self) -> &GrammarSituation {
+        self
+    }
+}
+
+pub trait ParsingAlgorithm {
+    fn predict(&self, word: &String) -> bool;
+}
+
+pub struct EarleyAlgorithm {
+    starting_rule: GrammarRule,
+    grammar: Grammar
+}
+
+impl EarleyAlgorithm {
+    pub fn fit(mut grammar: Grammar) -> Self {
+        let s = grammar.starting;
+        let s_prime = grammar.new_non_terminal();
+        let new_rule = GrammarRule::new(s_prime, vec![Symbol::NonTerminal(s)]);
+        grammar.add_rule(new_rule.clone());
+        grammar.starting = s_prime;
+        Self {
+            starting_rule: new_rule,
+            grammar
+        }
+    }
+}
+
+impl ParsingAlgorithm for EarleyAlgorithm {
+    fn predict(&self, word: &String) -> bool {
+        let indexable_word: Vec<char> = word.chars().collect();
+        let len = indexable_word.len();
+
+        struct EarleyData<'a> {
+            d: Vec<Vec<Vec<GrammarSituation<'a>>>>,
+            used: Vec<Vec<HashSet<GrammarSituation<'a>>>>,
+            queue: Vec<Vec<(GrammarSituation<'a>, usize)>>,
+            grammar: &'a Grammar,
+            indexable_word: Vec<char>,
+            len: usize
+        }
+
+        impl<'a> EarleyData<'a> {
+            fn add(&mut self, situation: GrammarSituation<'a>, j: usize, i: usize) {
+                if self.used[j][i].insert(situation.clone()) {
+                    self.queue[j].push((situation.clone(), i));
+                    self.d[j][i].push(situation);
+                }
+            }
+        }
+
+        let mut algo = EarleyData {
+            d: (0..=len).map(|j| (0..=j).map(|_i| Vec::new()).collect()).collect(),
+            used: (0..=len).map(|j| (0..=j).map(|_i| HashSet::new()).collect()).collect(),
+            queue: (0..=len).map(|_j| Vec::new()).collect(),
+            grammar: &self.grammar,
+            indexable_word,
+            len,
+        };
+
+        algo.add(GrammarSituation::new(&self.starting_rule, 0), 0, 0);
+
+        fn scan<'a>(algo: &mut EarleyData<'a>, situation: &GrammarSituation<'a>, j: usize, i: usize, next: char) {
+            if j < algo.indexable_word.len() && algo.indexable_word[j] == next {
+                let mut new_situation = situation.clone();
+                new_situation.point += 1;
+                algo.add(new_situation, j + 1, i);
+            }
+        }
+
+        fn predict(algo: &mut EarleyData, j: usize, next: NonTerminal) {
+            for rule in algo.grammar.get_rules(next) {
+                algo.add(GrammarSituation::new(&rule, 0), j, j);
+            }
+        }
+
+        fn complete(algo: &mut EarleyData, left: NonTerminal, j: usize, i: usize) {
+            for k in 0..=i {
+                let mut parent_ind = 0;
+                while parent_ind < algo.d[i][k].len() {
+                    let parent_state = algo.d[i][k].index(parent_ind);
+                    match parent_state.next() {
+                        Some(val) => match val {
+                            Symbol::NonTerminal(parent_non_terminal) => {
+                                if parent_non_terminal == left {
+                                    let mut new_parent_state = parent_state.clone();
+                                    new_parent_state.point += 1;
+                                    algo.add(new_parent_state, j, k);
+                                }
+                            }
+                            _ => ()
+                        }
+                        _ => ()
+                    }
+                    parent_ind += 1;
+                }
+            }
+        }
+
+        fn process_situation<'a>(algo: &mut EarleyData<'a>, j: usize, ind: usize) {
+            let (situation, i) = algo.queue[j][ind].clone();
+            let next = situation.next();
+            match next {
+                Some(symbol) => match symbol {
+                    Symbol::NonTerminal(non_terminal) => {
+                        predict(algo, j, non_terminal);
+                    }
+                    Symbol::Terminal(ch) => {
+                        scan(algo, &situation, j, i, ch);
+                    }
+                }
+                None => {
+                    complete(algo, situation.rule.left, j, i);
+                }
+            }
+        }
+
+        for j in 0..=len {
+            let mut ind = 0;
+            while ind < algo.queue[j].len() {
+                process_situation(&mut algo, j, ind);
+                ind += 1;
+            }
+        }
+
+        return algo.used[len][0].contains(&GrammarSituation::new(&self.starting_rule, 1))
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use Symbol::*;
+
+    fn make_bracket_sequence_or_palindrome_grammar() -> Grammar {
+        let mut res = Grammar::new();
+        let s = res.starting;
+        let s_bracket = res.new_non_terminal();
+        let s_palindrome = res.new_non_terminal();
+        res.add_rule(GrammarRule::new(s, vec![NonTerminal(s_bracket)]));
+        res.add_rule(GrammarRule::new(s, vec![NonTerminal(s_palindrome)]));
+
+        res.add_rule(GrammarRule::new(s_bracket, vec![Terminal('('), NonTerminal(s_bracket), Terminal(')'), NonTerminal(s_bracket)]));
+        res.add_rule(GrammarRule::new(s_bracket, vec![Terminal('['), NonTerminal(s_bracket), Terminal(']'), NonTerminal(s_bracket)]));
+        res.add_rule(GrammarRule::new(s_bracket, Vec::new()));
+
+        for letter in 0..26 {
+            let letter = ('a' as u8 + letter as u8) as char;
+            res.add_rule(GrammarRule::new(s_palindrome, vec![Terminal(letter), NonTerminal(s_palindrome), Terminal(letter)]));
+            res.add_rule(GrammarRule::new(s_palindrome, vec![Terminal(letter)]));
+        }
+        res.add_rule(GrammarRule::new(s_palindrome, Vec::new()));
+
+        res
+    }
+
+    fn make_arithmetic_grammar_concatenated_with_an_b2nminus1() -> Grammar {
+        let mut res = Grammar::new();
+        let s = res.starting;
+        let s_arith = res.new_non_terminal();
+        let s_an_bm = res.new_non_terminal();
+        let s_an_b2n = res.new_non_terminal();
+        res.add_rule(GrammarRule::new(s, vec![NonTerminal(s_arith), Terminal('|'), NonTerminal(s_an_bm)]));
+
+        res.add_rule(GrammarRule::new(s_an_bm, vec![Terminal('a'), NonTerminal(s_an_b2n), Terminal('b')]));
+        res.add_rule(GrammarRule::new(s_an_b2n, vec![Terminal('a'), NonTerminal(s_an_b2n), Terminal('b'), Terminal('b')]));
+        res.add_rule(GrammarRule::new(s_an_b2n, Vec::new()));
+
+        let s_sign_spaces = res.new_non_terminal();
+        let s_sign = res.new_non_terminal();
+        res.add_rule(GrammarRule::new(s_arith, vec![Terminal('0')]));
+        res.add_rule(GrammarRule::new(s_arith, vec![Terminal('1')]));
+        res.add_rule(GrammarRule::new(s_arith, vec![NonTerminal(s_arith), NonTerminal(s_sign_spaces), NonTerminal(s_arith)]));
+        res.add_rule(GrammarRule::new(s_arith, vec![Terminal('('), NonTerminal(s_arith), Terminal(')')]));
+
+        res.add_rule(GrammarRule::new(s_sign_spaces, vec![Terminal(' '), NonTerminal(s_sign), Terminal(' ')]));
+
+        res.add_rule(GrammarRule::new(s_sign, vec![Terminal('+')]));
+        res.add_rule(GrammarRule::new(s_sign, vec![Terminal('-')]));
+        res.add_rule(GrammarRule::new(s_sign, vec![Terminal('*')]));
+        res.add_rule(GrammarRule::new(s_sign, vec![Terminal('/')]));
+
+        res
+    }
+
+    #[test]
+    fn test_first_grammar() {
+        let grammar = make_bracket_sequence_or_palindrome_grammar();
+        let algo = EarleyAlgorithm::fit(grammar);
+        
+        assert!(algo.predict(&"".to_string()));
+        assert!(algo.predict(&"e".to_string()));
+        assert!(algo.predict(&"racecar".to_string()));
+        assert!(!algo.predict(&"cockeyoungerkasai".to_string()));
+        assert!(algo.predict(&"eertree".to_string()));
+        assert!(algo.predict(&"earleyyelrae".to_string()));
+        assert!(!algo.predict(&"earlyyelrae".to_string()));
+        assert!(algo.predict(&"()".to_string()));
+        assert!(!algo.predict(&"()b".to_string()));
+        assert!(algo.predict(&"([]()[])".to_string()));
+        assert!(algo.predict(&"()([()])[]()[()[]]".to_string()));
+        assert!(!algo.predict(&"()([()))[]()[()[]]".to_string()));
+        assert!(!algo.predict(&"()([(]))[]()[()[]]".to_string()));
+    }
+
+    #[test]
+    fn test_second_grammar() {
+        let grammar = make_arithmetic_grammar_concatenated_with_an_b2nminus1();
+        let algo = EarleyAlgorithm::fit(grammar);
+        
+        assert!(algo.predict(&"0|ab".to_string()));
+        assert!(algo.predict(&"0 + 1|aabbb".to_string()));
+        assert!(algo.predict(&"1 / 0|ab".to_string()));
+        assert!(algo.predict(&"(1 - 1) / ((0 / 0) + 0 * (1 + 1))|aaaaaaaabbbbbbbbbbbbbbb".to_string()));
+        assert!(algo.predict(&"((((((((0))))))))|aaabbbbb".to_string()));
+
+        assert!(!algo.predict(&"|".to_string()));
+        assert!(!algo.predict(&"1 - 1/ab".to_string()));
+        assert!(!algo.predict(&"(1 - 1) / ((0 / 0) + 0 * (1 + 1))|aaaaaaaabbbbbbbbbbbbbb".to_string()));
+        assert!(!algo.predict(&"(1 - 1) / ((0 / 0) + 0 * (1 + 1))|aaaaaaaaabbbbbbbbbbbbbbb".to_string()));
+        assert!(!algo.predict(&"(1 - 1) / ((0 / 0) + 0 * (1 + 1))|aaaaaaaabbbbbbbbbbbbbb".to_string()));
+        assert!(!algo.predict(&"((0))(1)|aabbb".to_string()));
+        assert!(!algo.predict(&"aabbb|0".to_string()));
+    }
 }
