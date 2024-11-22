@@ -109,18 +109,36 @@ impl ParsingAlgorithm for EarleyAlgorithm {
             }
         }
 
+        fn reverse_complete<'a>(algo: &mut EarleyData<'a>, situation: &GrammarSituation<'a>, j: usize, i: usize, next: NonTerminal) {
+            let mut parent_ind = 0;
+            while parent_ind < algo.d[j][j].len() {
+                let child_situation = &algo.d[j][j][parent_ind];
+                if child_situation.rule.left == next {
+                    match child_situation.next() {
+                        None => {
+                            let mut new_situation = situation.clone();
+                            new_situation.point += 1;
+                            algo.add(new_situation, j, i);
+                        }
+                        _ => ()
+                    }
+                }
+                parent_ind += 1;
+            }
+        }
+
         fn complete(algo: &mut EarleyData, left: NonTerminal, j: usize, i: usize) {
             for k in 0..=i {
                 let mut parent_ind = 0;
                 while parent_ind < algo.d[i][k].len() {
-                    let parent_state = algo.d[i][k].index(parent_ind);
-                    match parent_state.next() {
+                    let parent_situation = algo.d[i][k].index(parent_ind);
+                    match parent_situation.next() {
                         Some(val) => match val {
                             Symbol::NonTerminal(parent_non_terminal) => {
                                 if parent_non_terminal == left {
-                                    let mut new_parent_state = parent_state.clone();
-                                    new_parent_state.point += 1;
-                                    algo.add(new_parent_state, j, k);
+                                    let mut new_parent_situation = parent_situation.clone();
+                                    new_parent_situation.point += 1;
+                                    algo.add(new_parent_situation, j, k);
                                 }
                             }
                             _ => ()
@@ -139,6 +157,7 @@ impl ParsingAlgorithm for EarleyAlgorithm {
                 Some(symbol) => match symbol {
                     Symbol::NonTerminal(non_terminal) => {
                         predict(algo, j, non_terminal);
+                        reverse_complete(algo, &situation, j, i, non_terminal);
                     }
                     Symbol::Terminal(ch) => {
                         scan(algo, &situation, j, i, ch);
