@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-
 use std::ops::Index;
 
 use super::context_free::*;
@@ -38,30 +37,7 @@ impl<'a> GrammarSituation<'a> {
     }
 }
 
-// pub trait DerivedFromGrammarSituation {
-//     fn get_field(&self) -> &GrammarSituation;
-
-//     fn next(&self) -> Option<Symbol> {
-//         let situation = self.get_field();
-//         if situation.point == situation.rule.right.len() {
-//             None
-//         } else {
-//             Some(situation.rule.right[situation.point])
-//         }
-//     }
-// }
-
-// impl<'a> DerivedFromGrammarSituation for GrammarSituation<'a> {
-//     fn get_field(&self) -> &GrammarSituation {
-//         self
-//     }
-// }
-
-pub trait ParsingAlgorithm : Sized {
-    fn fit(grammar: Grammar) -> Option<Self>;
-    fn predict(&self, word: &String) -> bool;
-}
-
+#[derive(Clone, Debug)]
 pub struct EarleyAlgorithm {
     starting_rule: GrammarRule,
     grammar: Grammar
@@ -251,9 +227,18 @@ pub mod tests {
         res
     }
 
-    pub fn generic_test_first_grammar<Algo: ParsingAlgorithm>() {
+    pub fn generic_test_first_grammar<Algo: ParsingAlgorithm>(should_build: bool) {
         let grammar = make_bracket_sequence_or_palindrome_grammar();
-        let algo = Algo::fit(grammar).unwrap();
+        let algo = match Algo::fit(grammar) {
+            None => {
+                assert!(!should_build);
+                return;
+            }
+            Some(algo) => {
+                assert!(should_build);
+                algo
+            }
+        };
         
         assert!(algo.predict(&"".to_string()));
         assert!(algo.predict(&"e".to_string()));
@@ -270,9 +255,18 @@ pub mod tests {
         assert!(!algo.predict(&"()([(]))[]()[()[]]".to_string()));
     }
 
-    pub fn generic_test_second_grammar<Algo: ParsingAlgorithm>() {
+    pub fn generic_test_second_grammar<Algo: ParsingAlgorithm>(should_build: bool) {
         let grammar = make_arithmetic_grammar_concatenated_with_an_b2nminus1();
-        let algo = Algo::fit(grammar).unwrap();
+        let algo = match Algo::fit(grammar) {
+            None => {
+                assert!(!should_build);
+                return;
+            }
+            Some(algo) => {
+                assert!(should_build);
+                algo
+            }
+        };
         
         assert!(algo.predict(&"0|ab".to_string()));
         assert!(algo.predict(&"0 + 1|aabbb".to_string()));
@@ -291,11 +285,11 @@ pub mod tests {
 
     #[test]
     fn test_first_grammar() {
-        generic_test_first_grammar::<EarleyAlgorithm>();
+        generic_test_first_grammar::<EarleyAlgorithm>(true);
     }
 
     #[test]
     fn test_second_grammar() {
-        generic_test_second_grammar::<EarleyAlgorithm>();
+        generic_test_second_grammar::<EarleyAlgorithm>(true);
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::context_free::*;
-use super::earley::{GrammarSituation, ParsingAlgorithm};
+use super::earley::GrammarSituation;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct First {
@@ -13,7 +13,7 @@ fn merge_vecs<T: Ord + Clone>(a: &Vec<T>, b: &Vec<T>) -> Vec<T> {
     let mut a_index = 0;
     let mut b_index = 0;
     let mut res = Vec::<T>::new();
-    while a_index < a.len() && b_index < b.len() {
+    while a_index < a.len() || b_index < b.len() {
         if a_index == a.len() || b_index < b.len() && a[a_index] > b[b_index] {
             res.push(b[b_index].clone());
             b_index += 1;
@@ -22,6 +22,7 @@ fn merge_vecs<T: Ord + Clone>(a: &Vec<T>, b: &Vec<T>) -> Vec<T> {
             a_index += 1;
         }
     }
+    res.dedup();
     res
 }
 
@@ -61,6 +62,7 @@ impl First {
 
     fn get_first(non_terminal_firsts: &HashMap<NonTerminal, First>, string: impl Iterator<Item = Symbol>) -> First {
         let mut res = First::from_empty_string();
+
         for symbol in string {
             let cur_first = match symbol {
                 Symbol::Non(non_terminal) => non_terminal_firsts.get(&non_terminal).unwrap().clone(),
@@ -80,16 +82,16 @@ impl First {
 }
 
 #[derive(Clone, Debug)]
-struct LRAutomatonState<'a> {
+struct LR1AutomatonState<'a> {
     situations: HashMap<GrammarSituation<'a>, First>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct FrozenLRAutomatonState<'a> {
+struct FrozenLR1AutomatonState<'a> {
     situations: Vec<(GrammarSituation<'a>, First)>,
 }
 
-impl<'a> LRAutomatonState<'a> {
+impl<'a> LR1AutomatonState<'a> {
     fn closure(&mut self, non_terminal_firsts: &HashMap<NonTerminal, First>, grammar: &'a Grammar) {
         let mut unused = self.situations.clone();
 
@@ -125,16 +127,16 @@ impl<'a> LRAutomatonState<'a> {
         }
     }
 
-    fn freeze(self) -> FrozenLRAutomatonState<'a> {
+    fn freeze(self) -> FrozenLR1AutomatonState<'a> {
         let mut result: Vec<(GrammarSituation<'a>, First)> = self.situations.into_iter().collect();
         result.sort();
-        FrozenLRAutomatonState {
+        FrozenLR1AutomatonState {
             situations: result
         }
     }
 }
 
-impl<'a> FrozenLRAutomatonState<'a> {
+impl<'a> FrozenLR1AutomatonState<'a> {
     fn goto_options(&self) -> Vec<Symbol> {
         let mut res: Vec<Symbol> = self.situations.iter().map(|(situation, _)| {
             situation.next()
@@ -144,14 +146,14 @@ impl<'a> FrozenLRAutomatonState<'a> {
         res
     }
 
-    fn goto(&self, non_terminal_firsts: &HashMap<NonTerminal, First>, grammar: &'a Grammar, next: Symbol) -> LRAutomatonState<'a> {
+    fn goto(&self, non_terminal_firsts: &HashMap<NonTerminal, First>, grammar: &'a Grammar, next: Symbol) -> LR1AutomatonState<'a> {
         let res: HashMap<GrammarSituation, First> = self.situations.iter().filter(|(situation, _)| {
             let next = situation.next().and_then(|x| if x == next {Some(())} else {None});
             next == Some(())
         }).map(|(situation, first)| {
             (situation.clone().move_point(), first.clone())
         }).collect();
-        let mut new_state = LRAutomatonState {
+        let mut new_state = LR1AutomatonState {
             situations: res
         };
         new_state.closure(non_terminal_firsts, grammar);
@@ -160,61 +162,20 @@ impl<'a> FrozenLRAutomatonState<'a> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-enum LRAction {
+enum LR1Action {
     Shift(usize),
     Reduce(usize),
     Accept
 }
 
 #[derive(Clone, Debug)]
-pub struct LRAlgorithm {
-    action: Vec<HashMap<Option<char>, LRAction>>,
+pub struct LR1Algorithm {
+    action: Vec<HashMap<Option<char>, LR1Action>>,
     goto: Vec<HashMap<NonTerminal, usize>>,
     rules: Vec<GrammarRule>,
 }
 
-// #[derive(Clone, Debug)]
-// pub struct LRAutomaton<'a> {
-//     table: LRAlgorithm,
-//     states: HashMap<FrozenLRAutomatonState<'a>, usize>,
-// }
-// 
-// impl<'a> LRAutomaton<'a> {
-//     fn add_state(&'a mut self, non_terminal_firsts: &'a HashMap<NonTerminal, First>, grammar: &'a Grammar, mut state: LRAutomatonState<'a>) -> usize {
-//         struct Helper<'a, 'b> {
-//             f: &'b dyn FnMut(&'a Helper, LRAutomatonState<'a>) -> usize
-//         }
-//         let mut f = |helper: &'a Helper, mut state: LRAutomatonState<'a>| {
-//             state.closure(non_terminal_firsts, grammar);
-//             let frozen = state.freeze();
-//             if self.states.contains_key(&frozen) {
-//                 return *self.states.get(&frozen).unwrap()
-//             }
-//             let new_index = self.states.len();
-//             self.states.insert(frozen.clone(), new_index);
-//             self.table.action.push(HashMap::new());
-//             self.table.goto.push(HashMap::new());
-//             let options = frozen.goto_options();
-//             for option in options.into_iter() {
-//                 match option {
-//                     Symbol::Non(non_terminal) => {
-//                         self.table.goto[new_index].insert(non_terminal, (helper.f)(helper, frozen.goto(&non_terminal_firsts, &grammar, option)));
-//                     }
-//                     Symbol::Terminal(terminal) => {
-
-//                     }
-//                 }
-//             }
-//             new_index
-//         };
-//         let helper = Helper::<'a, '_> {
-//             f: &f,
-//         };
-//         (helper.f)(&helper, state)
-//     }
-// }
-
-impl ParsingAlgorithm for LRAlgorithm {
+impl ParsingAlgorithm for LR1Algorithm {
     fn fit(mut grammar: Grammar) -> Option<Self> {
         let starting_rule = grammar.add_exclusive_starting_non_terminal().clone();
         let starting_situation = GrammarSituation::new(&starting_rule, 0);
@@ -226,7 +187,7 @@ impl ParsingAlgorithm for LRAlgorithm {
             let mut new_firsts = non_terminal_firsts.clone();
             for (non_terminal, _) in non_terminal_firsts.iter() {
                 for rule in grammar.get_rules(*non_terminal).iter() {
-                    new_firsts.get_mut(non_terminal).unwrap().concatenate(&First::get_first(&non_terminal_firsts, rule.right.iter().map(|x| *x)));
+                    new_firsts.get_mut(non_terminal).unwrap().unite(&First::get_first(&non_terminal_firsts, rule.right.iter().map(|x| *x)));
                 }
             }
             if new_firsts != non_terminal_firsts {
@@ -246,22 +207,22 @@ impl ParsingAlgorithm for LRAlgorithm {
         }
         let accept_index = *reverse_rules_list.get(&starting_rule).unwrap();
 
-        let mut states_list: Vec<FrozenLRAutomatonState> = Vec::new();
+        let mut states_list: Vec<FrozenLR1AutomatonState> = Vec::new();
 
-        let mut reverse_states_list: HashMap<FrozenLRAutomatonState, usize> = HashMap::new();
-        let mut action: Vec<HashMap<Option<char>, LRAction>> = Vec::new();
+        let mut reverse_states_list: HashMap<FrozenLR1AutomatonState, usize> = HashMap::new();
+        let mut action: Vec<HashMap<Option<char>, LR1Action>> = Vec::new();
         let mut goto: Vec<HashMap<NonTerminal, usize>> = Vec::new();
         
         let mut start_situation = HashMap::new();
-        let start_first = First::first_of_situation(&non_terminal_firsts, &starting_situation);
+        let start_first = First::from_empty_string();
         start_situation.insert(starting_situation, start_first);
-        let mut start_lr_state = LRAutomatonState {
+        let mut start_lr1_state = LR1AutomatonState {
             situations: start_situation
         };
-        start_lr_state.closure(&non_terminal_firsts, &grammar);
-        let start_lr_state = start_lr_state.freeze();
-        states_list.push(start_lr_state.clone());
-        reverse_states_list.insert(start_lr_state, 0);
+        start_lr1_state.closure(&non_terminal_firsts, &grammar);
+        let start_lr1_state = start_lr1_state.freeze();
+        states_list.push(start_lr1_state.clone());
+        reverse_states_list.insert(start_lr1_state, 0);
 
         let mut index = 0;
         while index < states_list.len() {
@@ -273,7 +234,7 @@ impl ParsingAlgorithm for LRAlgorithm {
                 let new_index = if reverse_states_list.contains_key(&new_state) {
                     *reverse_states_list.get(&new_state).unwrap()
                 } else {
-                    reverse_states_list.insert(new_state.clone(), rules_list.len());
+                    reverse_states_list.insert(new_state.clone(), states_list.len());
                     states_list.push(new_state.clone());
                     states_list.len() - 1
                 };
@@ -282,7 +243,7 @@ impl ParsingAlgorithm for LRAlgorithm {
                         goto[index].insert(non_terminal, new_index);
                     }
                     Symbol::Terminal(ch) => {
-                        if !action[index].insert(Some(ch), LRAction::Shift(new_index)).is_none() {
+                        if !action[index].insert(Some(ch), LR1Action::Shift(new_index)).is_none() {
                             return None;
                         }
                     }
@@ -291,7 +252,7 @@ impl ParsingAlgorithm for LRAlgorithm {
             for (situation, first) in cur_state.situations.iter() {
                 if situation.next().is_none() {
                     let rule_index = *reverse_rules_list.get(situation.get_rule()).unwrap();
-                    let cur_action = if rule_index == accept_index {LRAction::Accept} else {LRAction::Reduce(rule_index)};
+                    let cur_action = if rule_index == accept_index {LR1Action::Accept} else {LR1Action::Reduce(rule_index)};
                     for ch in first.characters.iter() {
                         if !action[index].insert(Some(*ch), cur_action).is_none() {
                             return None;
@@ -316,20 +277,20 @@ impl ParsingAlgorithm for LRAlgorithm {
 
     fn predict(&self, word: &String) -> bool {
         #[derive(Clone, Copy, Debug)]
-        enum LRSymbol {
+        enum LR1Symbol {
             Non(NonTerminal),
             Terminal(Option<char>)
         }
         #[derive(Clone, Copy, Debug)]
         enum StackContent {
             State(usize),
-            Symbol(LRSymbol)
+            Symbol(LR1Symbol)
         }
         use StackContent::*;
-        use LRAction::*;
-        use LRSymbol::*;
+        use LR1Action::*;
+        use LR1Symbol::*;
 
-        let mut lr_stack = vec![State(0)];
+        let mut lr1_stack = vec![State(0)];
 
         let mut pos = 0;
 
@@ -340,28 +301,28 @@ impl ParsingAlgorithm for LRAlgorithm {
                 break None;
             }
             let next = indexable_word[pos];
-            let cur_state = match lr_stack.last().unwrap() {
-                Symbol(_) => panic!("invalid lr stack"),
+            let cur_state = match lr1_stack.last().unwrap() {
+                Symbol(_) => panic!("invalid LR1 stack"),
                 State(x) => *x
             };
             match self.action[cur_state].get(&next)? {
                 Shift(next_state) => {
-                    lr_stack.push(Symbol(Terminal(next)));
-                    lr_stack.push(State(*next_state));
+                    lr1_stack.push(Symbol(Terminal(next)));
+                    lr1_stack.push(State(*next_state));
                     pos += 1;
                 }
                 Reduce(rule_index) => {
                     let rule = &self.rules[*rule_index];
                     for _ in 0..2 * rule.right.len() {
-                        lr_stack.pop().unwrap();
+                        lr1_stack.pop().unwrap();
                     }
-                    let cur_state = match lr_stack.last().unwrap() {
-                        Symbol(_) => panic!("invalid lr stack"),
+                    let cur_state = match lr1_stack.last().unwrap() {
+                        Symbol(_) => panic!("invalid LR1 stack"),
                         State(x) => *x
                     };
                     let next_state = self.goto[cur_state].get(&rule.left)?;
-                    lr_stack.push(Symbol(Non(rule.left)));
-                    lr_stack.push(State(*next_state));
+                    lr1_stack.push(Symbol(Non(rule.left)));
+                    lr1_stack.push(State(*next_state));
                 }
                 Accept => break Some(())
             }
@@ -375,13 +336,15 @@ impl ParsingAlgorithm for LRAlgorithm {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
-    use crate::grammars::earley::tests::*;
-    use Symbol::*;
-    use LRAction::*;
+    use rand::prelude::*;
 
-    fn import_ccdcd_table() -> LRAlgorithm {
-        // LR-table for the grammar S->CC, C->cC, C->d taken from https://neerc.ifmo.ru/wiki/index.php?title=LR(1)-разбор
+    use super::*;
+    use crate::grammars::earley::{tests::*, EarleyAlgorithm};
+    use Symbol::*;
+    use LR1Action::*;
+
+    fn import_ccdcd_table() -> LR1Algorithm {
+        // LR1-table for the grammar S->CC, C->cC, C->d taken from https://neerc.ifmo.ru/wiki/index.php?title=LR1(1)-разбор
         let s = NonTerminal::new(0);
         let c = NonTerminal::new(1);
         let rules = vec![
@@ -390,7 +353,7 @@ pub mod tests {
             GrammarRule::new(c, vec![Terminal('d')]),
         ];
         let cnt_states = 10usize;
-        let mut action: Vec<HashMap<Option<char>, LRAction>> = (0..cnt_states).map(|_| HashMap::new()).collect();
+        let mut action: Vec<HashMap<Option<char>, LR1Action>> = (0..cnt_states).map(|_| HashMap::new()).collect();
         let mut goto: Vec<HashMap<NonTerminal, usize>> = (0..cnt_states).map(|_| HashMap::new()).collect();
         goto[0].insert(s, 1);
         goto[0].insert(c, 2);
@@ -409,7 +372,7 @@ pub mod tests {
         action[6].insert(Some('c'), Shift(6));
         action[6].insert(Some('d'), Shift(7));
 
-        action[4].insert(Some('c'), Reduce(2)); // fixed conspect's mistake
+        action[4].insert(Some('c'), Reduce(2)); // fixed mistake in conspect
         action[4].insert(Some('d'), Reduce(2));
         action[5].insert(None, Reduce(0));
         action[7].insert(None, Reduce(2));
@@ -417,19 +380,18 @@ pub mod tests {
         action[8].insert(Some('d'), Reduce(1));
         action[9].insert(None, Reduce(1));
 
-        return LRAlgorithm {
+        return LR1Algorithm {
             rules,
             action,
             goto,
         }
     }
 
-    #[test]
-    fn test_ccdcd_grammar() {
-        let algo = import_ccdcd_table();
-
+    fn test_ccdcd_grammar_from(algo: LR1Algorithm) {
         assert!(algo.predict(&"ccdcd".to_string()));
         assert!(algo.predict(&"dd".to_string()));
+        assert!(algo.predict(&"dccccccd".to_string()));
+        assert!(!algo.predict(&String::new()));
         assert!(!algo.predict(&"ccdcdc".to_string()));
         assert!(!algo.predict(&"ccdcdd".to_string()));
         assert!(!algo.predict(&"ccd".to_string()));
@@ -437,12 +399,89 @@ pub mod tests {
     }
 
     #[test]
+    fn test_ccdcd_imported_table() {
+        test_ccdcd_grammar_from(import_ccdcd_table());
+    }
+
+    #[test]
+    fn test_ccdcd_built_table() {
+        use Symbol::*;
+        let mut gr = Grammar::new();
+        let s = gr.starting;
+        let c = gr.new_non_terminal();
+        gr.add_rule(GrammarRule::new(s, vec![Non(c), Non(c)]));
+        gr.add_rule(GrammarRule::new(c, vec![Terminal('c'), Non(c)]));
+        gr.add_rule(GrammarRule::new(c, vec![Terminal('d')]));
+
+        let algo = LR1Algorithm::fit(gr).unwrap();
+        test_ccdcd_grammar_from(algo);
+    }
+
+    #[test]
     fn test_first_grammar() {
-        generic_test_first_grammar::<LRAlgorithm>();
+        generic_test_first_grammar::<LR1Algorithm>(false);
     }
 
     #[test]
     fn test_second_grammar() {
-        generic_test_second_grammar::<LRAlgorithm>();
+        generic_test_second_grammar::<LR1Algorithm>(false);
+    }
+
+    fn gen_random_word<T: Copy>(alphabet: &Vec<T>, len: usize) -> Vec<T> {
+        (0..len).map(|_| alphabet[random::<usize>() % alphabet.len()]).collect()
+    }
+
+    fn gen_random_grammar(alphabet: &Vec<char>, non_terminals_count: usize, max_rule_len: usize, rule_count: usize) -> Grammar {
+        let mut res = Grammar::new();
+        let mut non_terminals = vec![res.starting];
+        for _ in 1..non_terminals_count {
+            non_terminals.push(res.new_non_terminal());
+        }
+        let symbols = alphabet.iter().map(|x| Symbol::Terminal(*x))
+                .chain(non_terminals.iter().map(|x| Symbol::Non(*x))).collect::<Vec<Symbol>>();
+        for _ in 0..rule_count {
+            let left = non_terminals[random::<usize>() % non_terminals_count];
+            let right = gen_random_word(&symbols, random::<usize>() % max_rule_len + 1);
+            res.add_rule(GrammarRule::new(left, right));
+        }
+        res
+    }
+
+    #[test]
+    fn test_fuzz() {
+        const ITERATIONS: usize = 500;
+        const WORDS: usize = 1000;
+        const MAX_WORD_LEN: usize = 5;
+        const ALPHABET_SIZE: u8 = 3;
+        const NON_TERMINALS: usize = 5;
+        const MAX_RULE_LEN: usize = 3;
+        const RULE_COUNT: usize = 10;
+
+        let alphabet: Vec<char> = (0..ALPHABET_SIZE).map(|x| (x + ('a' as u8)) as char).collect();
+
+        let mut cnt_success = 0;
+        let mut cnt_predicts = 0;
+
+        for _iter in 0..ITERATIONS {
+            let grammar = gen_random_grammar(&alphabet, NON_TERMINALS, MAX_RULE_LEN, RULE_COUNT);
+            let lr1 = match LR1Algorithm::fit(grammar.clone()) {
+                Some(x) => x,
+                None => {continue;}
+            };
+            let earley = EarleyAlgorithm::fit(grammar).unwrap();
+            for _word in 0..WORDS {
+                let word = gen_random_word(&alphabet, MAX_WORD_LEN).into_iter().collect::<String>();
+                let res_earley = earley.predict(&word);
+                let res_lr1 = lr1.predict(&word);
+                assert!(res_lr1 == res_earley);
+                if res_earley {
+                    cnt_predicts += 1;
+                }
+            }
+            cnt_success += 1;
+        }
+        eprintln!("lr1 builds: {}\npredicts: {}", cnt_success, cnt_predicts);
+        assert!(cnt_success >= 10);
+        assert!(cnt_predicts >= 10);
     }
 }

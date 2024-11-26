@@ -1,7 +1,16 @@
 mod grammars;
-#[allow(unused_imports)]
-use crate::grammars::lr1;
+use grammars::lr1::LR1Algorithm;
+use grammars::generic_main::generic_main;
 
 fn main() {
-    todo!("Написать LR(1)-разбор");
+    match generic_main::<LR1Algorithm>(std::io::stdin()) {
+        Ok(ans) => {
+            for line in ans {
+                println!("{}", if line {"Yes"} else {"No"});
+            }
+        }
+        Err(err) => {
+            eprintln!("{}", err);
+        }
+    }
 }

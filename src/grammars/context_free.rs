@@ -241,3 +241,8 @@ impl Display for Grammar {
         std::fmt::Result::Ok(())
     }
 }
+
+pub trait ParsingAlgorithm : Sized {
+    fn fit(grammar: Grammar) -> Option<Self>;
+    fn predict(&self, word: &String) -> bool;
+}
