@@ -18,7 +18,7 @@ fn main() {
             }
         }
     };
-    let algo = EarleyAlgorithm::fit(grammar);
+    let algo = EarleyAlgorithm::fit(grammar).unwrap();
     let queries: usize = read_line().expect("m not found").parse().expect("wrong m format");
     for i in 0..queries {
         let query = read_line().expect(format!("query {} not found", i + 1).as_str());

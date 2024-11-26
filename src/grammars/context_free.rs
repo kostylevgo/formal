@@ -7,9 +7,15 @@ pub struct NonTerminal {
     id: usize
 }
 
+impl NonTerminal {
+    pub fn new(id: usize) -> Self {
+        Self {id}
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Symbol {
-    NonTerminal(NonTerminal),
+    Non(NonTerminal),
     Terminal(char)
 }
 
@@ -55,21 +61,19 @@ impl NonTerminalManager {
 
     pub fn new_non_terminal(&mut self) -> NonTerminal {
         self.count += 1;
-        NonTerminal {
-            id: self.count - 1
-        }
+        NonTerminal::new(self.count - 1)
     }
 
     fn to_non_terminal(&mut self, non_terminal: char) -> NonTerminal {
-        NonTerminal {
-            id: if self.letter_codes.contains_key(&non_terminal) {
+        NonTerminal::new(
+            if self.letter_codes.contains_key(&non_terminal) {
                 *self.letter_codes.get(&non_terminal).unwrap()
             } else {
                 self.letter_codes.insert(non_terminal, self.count);
                 self.count += 1;
                 self.count - 1
             }
-        }
+        )
     }
 
     pub fn to_rule(&mut self, str: &String) -> Option<GrammarRule> {
@@ -91,7 +95,7 @@ impl NonTerminalManager {
             return None;
         }
         let left_part = self.to_non_terminal(left_part.chars().nth(0).unwrap());
-        let right_part = right_part.chars().map(|x| if x.is_ascii_uppercase() {Symbol::NonTerminal(self.to_non_terminal(x))} else {Symbol::Terminal(x)}).collect();
+        let right_part = right_part.chars().map(|x| if x.is_ascii_uppercase() {Symbol::Non(self.to_non_terminal(x))} else {Symbol::Terminal(x)}).collect();
         Some(GrammarRule::new(left_part, right_part))
     }
 }
@@ -117,10 +121,23 @@ impl Grammar {
         self.rules.get(&starts_with).unwrap()
     }
 
+    pub fn get_non_terminals(&self) -> Vec<NonTerminal> {
+        self.rules.iter().map(|x| *x.0).collect()
+    }
+
     pub fn new_non_terminal(&mut self) -> NonTerminal {
         let res = self.manager.new_non_terminal();
         self.rules.insert(res, Vec::new());
         res
+    }
+
+    pub fn add_exclusive_starting_non_terminal(&mut self) -> &GrammarRule {
+        let s = self.starting;
+        let s_prime = self.new_non_terminal();
+        let new_rule = GrammarRule::new(s_prime, vec![Symbol::Non(s)]);
+        self.add_rule(new_rule);
+        self.starting = s_prime;
+        &self.rules.get(&s_prime).unwrap()[0]
     }
 
     pub fn read(source: &mut impl BufRead) -> Result<Grammar, String> {
@@ -171,7 +188,7 @@ impl Grammar {
         let starting = manager.to_non_terminal(starting_char);
         let mut rules_map = HashMap::new();
         for id in 0..manager.get_count() {
-            rules_map.insert(NonTerminal {id}, Vec::new());
+            rules_map.insert(NonTerminal::new(id), Vec::new());
         }
         let mut res = Self {
             manager,
@@ -199,7 +216,7 @@ impl Display for GrammarRule {
         write!(f, "{} -> |", self.left)?;
         for symbol in self.right.iter() {
             match symbol {
-                Symbol::NonTerminal(non_terminal) => {
+                Symbol::Non(non_terminal) => {
                     write!(f, "{}", non_terminal)?;
                 }
                 Symbol::Terminal(ch) => {
@@ -216,7 +233,7 @@ impl Display for Grammar {
         write!(f, "starting: {}\n", self.starting)?;
         let count = self.manager.get_count();
         for id in 0..count {
-            let left = NonTerminal {id};
+            let left = NonTerminal::new(id);
             for rule in self.rules.get(&left).unwrap().iter() {
                 write!(f, "{}\n", rule)?;
             }
