@@ -108,10 +108,7 @@ impl ParsingAlgorithm for EarleyAlgorithm {
                     let parent_situation = algo.situations_with_j_i[i][k].index(parent_index);
                     parent_index += 1;
                     let next = parent_situation.next();
-                    if next.is_none() {
-                        continue;
-                    }
-                    if next.unwrap() == Symbol::Non(left) {
+                    if next.is_some() && next.unwrap() == Symbol::Non(left) {
                         let mut new_parent_situation = parent_situation.clone();
                         new_parent_situation.point += 1;
                         algo.add(new_parent_situation, j, k);
