@@ -1,8 +1,8 @@
 use std::io::{BufRead, BufReader};
 use crate::grammars::context_free::{Grammar, ParsingAlgorithm};
 
-pub fn generic_main<Algo: ParsingAlgorithm>(inner: impl std::io::Read) -> Result<Vec<bool>, String> {
-    let mut reader = BufReader::with_capacity(4096, inner);
+pub fn generic_main<Algo: ParsingAlgorithm>(input: impl std::io::Read) -> Result<Vec<bool>, String> {
+    let mut reader = BufReader::with_capacity(4096, input);
     let grammar = match Grammar::read(&mut reader) {
         Ok(grammar) => grammar,
         Err(err) => return Err(err)
@@ -30,15 +30,15 @@ pub fn generic_main<Algo: ParsingAlgorithm>(inner: impl std::io::Read) -> Result
         }
         _ => return Err("could not read m".to_string())
     };
-    let mut ans: Vec<bool> = Vec::new();
+    let mut answer: Vec<bool> = Vec::new();
     for i in 0..queries {
         let query = match read_line() {
             Some(word) => word,
             None => return Err(format!("could not read query {}", i + 1))
         };
-        ans.push(algo.predict(&query));
+        answer.push(algo.predict(&query));
     }
-    Ok(ans)
+    Ok(answer)
 }
 
 #[cfg(test)]

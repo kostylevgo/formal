@@ -57,8 +57,8 @@ impl ParsingAlgorithm for EarleyAlgorithm {
         let len = indexable_word.len();
 
         struct EarleyData<'a> {
-            d: Vec<Vec<Vec<GrammarSituation<'a>>>>,
-            used: Vec<Vec<HashSet<GrammarSituation<'a>>>>,
+            situations_with_j_i: Vec<Vec<Vec<GrammarSituation<'a>>>>,
+            reached_situations: Vec<Vec<HashSet<GrammarSituation<'a>>>>,
             queue: Vec<Vec<(GrammarSituation<'a>, usize)>>,
             grammar: &'a Grammar,
             indexable_word: Vec<char>,
@@ -67,16 +67,16 @@ impl ParsingAlgorithm for EarleyAlgorithm {
 
         impl<'a> EarleyData<'a> {
             fn add(&mut self, situation: GrammarSituation<'a>, j: usize, i: usize) {
-                if self.used[j][i].insert(situation.clone()) {
+                if self.reached_situations[j][i].insert(situation.clone()) {
                     self.queue[j].push((situation.clone(), i));
-                    self.d[j][i].push(situation);
+                    self.situations_with_j_i[j][i].push(situation);
                 }
             }
         }
 
         let mut algo = EarleyData {
-            d: (0..=len).map(|j| (0..=j).map(|_i| Vec::new()).collect()).collect(),
-            used: (0..=len).map(|j| (0..=j).map(|_i| HashSet::new()).collect()).collect(),
+            situations_with_j_i: (0..=len).map(|j| (0..=j).map(|_i| Vec::new()).collect()).collect(),
+            reached_situations: (0..=len).map(|j| (0..=j).map(|_i| HashSet::new()).collect()).collect(),
             queue: (0..=len).map(|_j| Vec::new()).collect(),
             grammar: &self.grammar,
             indexable_word,
@@ -99,49 +99,43 @@ impl ParsingAlgorithm for EarleyAlgorithm {
             }
         }
 
-        fn reverse_complete<'a>(algo: &mut EarleyData<'a>, situation: &GrammarSituation<'a>, j: usize, i: usize, next: NonTerminal) {
-            let mut parent_ind = 0;
-            while parent_ind < algo.d[j][j].len() {
-                let child_situation = &algo.d[j][j][parent_ind];
-                if child_situation.rule.left == next {
-                    match child_situation.next() {
-                        None => {
-                            let mut new_situation = situation.clone();
-                            new_situation.point += 1;
-                            algo.add(new_situation, j, i);
-                        }
-                        _ => ()
-                    }
-                }
-                parent_ind += 1;
-            }
-        }
-
         fn complete(algo: &mut EarleyData, left: NonTerminal, j: usize, i: usize) {
             for k in 0..=i {
-                let mut parent_ind = 0;
-                while parent_ind < algo.d[i][k].len() {
-                    let parent_situation = algo.d[i][k].index(parent_ind);
-                    match parent_situation.next() {
-                        Some(val) => match val {
-                            Symbol::Non(parent_non_terminal) => {
-                                if parent_non_terminal == left {
-                                    let mut new_parent_situation = parent_situation.clone();
-                                    new_parent_situation.point += 1;
-                                    algo.add(new_parent_situation, j, k);
-                                }
-                            }
-                            _ => ()
-                        }
-                        _ => ()
+                let mut parent_index = 0;
+                // not using algo.situations_with_j_i.iter() because it borrows algo and doesn't allow algo.add
+                // in C++, that also could result in iterator invalidation caused by algo.add
+                while parent_index < algo.situations_with_j_i[i][k].len() {
+                    let parent_situation = algo.situations_with_j_i[i][k].index(parent_index);
+                    parent_index += 1;
+                    let next = parent_situation.next();
+                    if next.is_none() {
+                        continue;
                     }
-                    parent_ind += 1;
+                    if next.unwrap() == Symbol::Non(left) {
+                        let mut new_parent_situation = parent_situation.clone();
+                        new_parent_situation.point += 1;
+                        algo.add(new_parent_situation, j, k);
+                    }
                 }
             }
         }
 
-        fn process_situation<'a>(algo: &mut EarleyData<'a>, j: usize, ind: usize) {
-            let (situation, i) = algo.queue[j][ind].clone();
+        fn reverse_complete<'a>(algo: &mut EarleyData<'a>, situation: &GrammarSituation<'a>, j: usize, i: usize, next: NonTerminal) {
+            let mut parent_index = 0;
+            // same reason not to use algo.situations.iter() as in complete
+            while parent_index < algo.situations_with_j_i[j][j].len() {
+                let child_situation = &algo.situations_with_j_i[j][j][parent_index];
+                if child_situation.rule.left == next && child_situation.next().is_none() {
+                    let mut new_situation = situation.clone();
+                    new_situation.point += 1;
+                    algo.add(new_situation, j, i);
+                }
+                parent_index += 1;
+            }
+        }
+
+        fn process_situation<'a>(algo: &mut EarleyData<'a>, j: usize, index: usize) {
+            let (situation, i) = algo.queue[j][index].clone();
             let next = situation.next();
             match next {
                 Some(symbol) => match symbol {
@@ -149,8 +143,8 @@ impl ParsingAlgorithm for EarleyAlgorithm {
                         predict(algo, j, non_terminal);
                         reverse_complete(algo, &situation, j, i, non_terminal);
                     }
-                    Symbol::Terminal(ch) => {
-                        scan(algo, &situation, j, i, ch);
+                    Symbol::Terminal(symbol) => {
+                        scan(algo, &situation, j, i, symbol);
                     }
                 }
                 None => {
@@ -160,14 +154,29 @@ impl ParsingAlgorithm for EarleyAlgorithm {
         }
 
         for j in 0..=len {
-            let mut ind = 0;
-            while ind < algo.queue[j].len() {
-                process_situation(&mut algo, j, ind);
-                ind += 1;
+            let mut index = 0;
+            while index < algo.queue[j].len() {
+                process_situation(&mut algo, j, index);
+                index += 1;
             }
         }
 
-        return algo.used[len][0].contains(&GrammarSituation::new(&self.starting_rule, 1))
+        /*
+            Why algorithm is O(len^3), if the grammar's size is constant:
+            1) for every j and i, only O(1) situations can be added in reached_situations[i][j]
+            2) => O(len^2) situations can be added in reached_situations in total, same in queue
+            3) every situation in queue is processed only once
+            4) processing of a situation is a predict+reverse_complete, scan or complete:
+                - predict is O(1)
+                - scan is O(1)
+                - reverse_complete: one iteration over situations_with_j_i[j][j]
+                - complete: O(len) iterations over situations_with_j_i[j][i]
+                - for every j and i, situations_with_j_i[j][i] only has O(1) situations, same as in reached_situations[j][i]
+                => process_situation is O(len)
+            => everything is O(len^3)
+         */
+
+        return algo.reached_situations[len][0].contains(&GrammarSituation::new(&self.starting_rule, 1))
     }
 }
 
@@ -177,54 +186,54 @@ pub mod tests {
     use Symbol::*;
 
     pub fn make_bracket_sequence_or_palindrome_grammar() -> Grammar {
-        let mut res = Grammar::new();
-        let s = res.starting;
-        let s_bracket = res.new_non_terminal();
-        let s_palindrome = res.new_non_terminal();
-        res.add_rule(GrammarRule::new(s, vec![Non(s_bracket)]));
-        res.add_rule(GrammarRule::new(s, vec![Non(s_palindrome)]));
+        let mut result = Grammar::new();
+        let start = result.starting;
+        let start_bracket = result.new_non_terminal();
+        let start_palindrome = result.new_non_terminal();
+        result.add_rule(GrammarRule::new(start, vec![Non(start_bracket)]));
+        result.add_rule(GrammarRule::new(start, vec![Non(start_palindrome)]));
 
-        res.add_rule(GrammarRule::new(s_bracket, vec![Terminal('('), Non(s_bracket), Terminal(')'), Non(s_bracket)]));
-        res.add_rule(GrammarRule::new(s_bracket, vec![Terminal('['), Non(s_bracket), Terminal(']'), Non(s_bracket)]));
-        res.add_rule(GrammarRule::new(s_bracket, Vec::new()));
+        result.add_rule(GrammarRule::new(start_bracket, vec![Terminal('('), Non(start_bracket), Terminal(')'), Non(start_bracket)]));
+        result.add_rule(GrammarRule::new(start_bracket, vec![Terminal('['), Non(start_bracket), Terminal(']'), Non(start_bracket)]));
+        result.add_rule(GrammarRule::new(start_bracket, Vec::new()));
 
         for letter in 0..26 {
             let letter = ('a' as u8 + letter as u8) as char;
-            res.add_rule(GrammarRule::new(s_palindrome, vec![Terminal(letter), Non(s_palindrome), Terminal(letter)]));
-            res.add_rule(GrammarRule::new(s_palindrome, vec![Terminal(letter)]));
+            result.add_rule(GrammarRule::new(start_palindrome, vec![Terminal(letter), Non(start_palindrome), Terminal(letter)]));
+            result.add_rule(GrammarRule::new(start_palindrome, vec![Terminal(letter)]));
         }
-        res.add_rule(GrammarRule::new(s_palindrome, Vec::new()));
+        result.add_rule(GrammarRule::new(start_palindrome, Vec::new()));
 
-        res
+        result
     }
 
     pub fn make_arithmetic_grammar_concatenated_with_an_b2nminus1() -> Grammar {
-        let mut res = Grammar::new();
-        let s = res.starting;
-        let s_arith = res.new_non_terminal();
-        let s_an_bm = res.new_non_terminal();
-        let s_an_b2n = res.new_non_terminal();
-        res.add_rule(GrammarRule::new(s, vec![Non(s_arith), Terminal('|'), Non(s_an_bm)]));
+        let mut result = Grammar::new();
+        let start = result.starting;
+        let start_arith = result.new_non_terminal();
+        let start_an_b2nm1 = result.new_non_terminal();
+        let start_an_b2n = result.new_non_terminal();
+        result.add_rule(GrammarRule::new(start, vec![Non(start_arith), Terminal('|'), Non(start_an_b2nm1)]));
 
-        res.add_rule(GrammarRule::new(s_an_bm, vec![Terminal('a'), Non(s_an_b2n), Terminal('b')]));
-        res.add_rule(GrammarRule::new(s_an_b2n, vec![Terminal('a'), Non(s_an_b2n), Terminal('b'), Terminal('b')]));
-        res.add_rule(GrammarRule::new(s_an_b2n, Vec::new()));
+        result.add_rule(GrammarRule::new(start_an_b2nm1, vec![Terminal('a'), Non(start_an_b2n), Terminal('b')]));
+        result.add_rule(GrammarRule::new(start_an_b2n, vec![Terminal('a'), Non(start_an_b2n), Terminal('b'), Terminal('b')]));
+        result.add_rule(GrammarRule::new(start_an_b2n, Vec::new()));
 
-        let s_sign_spaces = res.new_non_terminal();
-        let s_sign = res.new_non_terminal();
-        res.add_rule(GrammarRule::new(s_arith, vec![Terminal('0')]));
-        res.add_rule(GrammarRule::new(s_arith, vec![Terminal('1')]));
-        res.add_rule(GrammarRule::new(s_arith, vec![Non(s_arith), Non(s_sign_spaces), Non(s_arith)]));
-        res.add_rule(GrammarRule::new(s_arith, vec![Terminal('('), Non(s_arith), Terminal(')')]));
+        let s_sign_spaces = result.new_non_terminal();
+        let s_sign = result.new_non_terminal();
+        result.add_rule(GrammarRule::new(start_arith, vec![Terminal('0')]));
+        result.add_rule(GrammarRule::new(start_arith, vec![Terminal('1')]));
+        result.add_rule(GrammarRule::new(start_arith, vec![Non(start_arith), Non(s_sign_spaces), Non(start_arith)]));
+        result.add_rule(GrammarRule::new(start_arith, vec![Terminal('('), Non(start_arith), Terminal(')')]));
 
-        res.add_rule(GrammarRule::new(s_sign_spaces, vec![Terminal(' '), Non(s_sign), Terminal(' ')]));
+        result.add_rule(GrammarRule::new(s_sign_spaces, vec![Terminal(' '), Non(s_sign), Terminal(' ')]));
 
-        res.add_rule(GrammarRule::new(s_sign, vec![Terminal('+')]));
-        res.add_rule(GrammarRule::new(s_sign, vec![Terminal('-')]));
-        res.add_rule(GrammarRule::new(s_sign, vec![Terminal('*')]));
-        res.add_rule(GrammarRule::new(s_sign, vec![Terminal('/')]));
+        result.add_rule(GrammarRule::new(s_sign, vec![Terminal('+')]));
+        result.add_rule(GrammarRule::new(s_sign, vec![Terminal('-')]));
+        result.add_rule(GrammarRule::new(s_sign, vec![Terminal('*')]));
+        result.add_rule(GrammarRule::new(s_sign, vec![Terminal('/')]));
 
-        res
+        result
     }
 
     pub fn generic_test_first_grammar<Algo: ParsingAlgorithm>(should_build: bool) {

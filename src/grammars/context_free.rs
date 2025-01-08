@@ -132,12 +132,12 @@ impl Grammar {
     }
 
     pub fn add_exclusive_starting_non_terminal(&mut self) -> &GrammarRule {
-        let s = self.starting;
-        let s_prime = self.new_non_terminal();
-        let new_rule = GrammarRule::new(s_prime, vec![Symbol::Non(s)]);
+        let start = self.starting;
+        let start_prime = self.new_non_terminal();
+        let new_rule = GrammarRule::new(start_prime, vec![Symbol::Non(start)]);
         self.add_rule(new_rule);
-        self.starting = s_prime;
-        &self.rules.get(&s_prime).unwrap()[0]
+        self.starting = start_prime;
+        &self.rules.get(&start_prime).unwrap()[0]
     }
 
     pub fn read(source: &mut impl BufRead) -> Result<Grammar, String> {
@@ -206,36 +206,36 @@ impl Grammar {
 }
 
 impl Display for NonTerminal {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if self.id < 26 {write!(f, "{}", (('A' as u8 + self.id as u8) as char).to_string())} else {write!(f, "<{}>", self.id)}
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.id < 26 {write!(formatter, "{}", (('A' as u8 + self.id as u8) as char).to_string())} else {write!(formatter, "<{}>", self.id)}
     }
 }
 
 impl Display for GrammarRule {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} -> |", self.left)?;
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{} -> |", self.left)?;
         for symbol in self.right.iter() {
             match symbol {
                 Symbol::Non(non_terminal) => {
-                    write!(f, "{}", non_terminal)?;
+                    write!(formatter, "{}", non_terminal)?;
                 }
                 Symbol::Terminal(ch) => {
-                    write!(f, "{}", ch.to_string())?;
+                    write!(formatter, "{}", ch.to_string())?;
                 }
             }
         }
-        write!(f, "|")
+        write!(formatter, "|")
     }
 }
 
 impl Display for Grammar {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "starting: {}\n", self.starting)?;
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "starting: {}\n", self.starting)?;
         let count = self.manager.get_count();
         for id in 0..count {
             let left = NonTerminal::new(id);
             for rule in self.rules.get(&left).unwrap().iter() {
-                write!(f, "{}\n", rule)?;
+                write!(formatter, "{}\n", rule)?;
             }
         }
         std::fmt::Result::Ok(())

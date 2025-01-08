@@ -9,21 +9,21 @@ struct First {
     characters: Vec<char>,
 }
 
-fn merge_vecs<T: Ord + Clone>(a: &Vec<T>, b: &Vec<T>) -> Vec<T> {
-    let mut a_index = 0;
-    let mut b_index = 0;
-    let mut res = Vec::<T>::new();
-    while a_index < a.len() || b_index < b.len() {
-        if a_index == a.len() || b_index < b.len() && a[a_index] > b[b_index] {
-            res.push(b[b_index].clone());
-            b_index += 1;
+fn merge_vecs<T: Ord + Clone>(lhs: &Vec<T>, rhs: &Vec<T>) -> Vec<T> {
+    let mut lhs_index = 0;
+    let mut rhs_index = 0;
+    let mut result = Vec::<T>::new();
+    while lhs_index < lhs.len() || rhs_index < rhs.len() {
+        if lhs_index == lhs.len() || rhs_index < rhs.len() && lhs[lhs_index] > rhs[rhs_index] {
+            result.push(rhs[rhs_index].clone());
+            rhs_index += 1;
         } else {
-            res.push(a[a_index].clone());
-            a_index += 1;
+            result.push(lhs[lhs_index].clone());
+            lhs_index += 1;
         }
     }
-    res.dedup();
-    res
+    result.dedup();
+    result
 }
 
 impl First {
@@ -46,10 +46,10 @@ impl First {
         }
     }
 
-    fn from_char(ch: char) -> First {
+    fn from_char(symbol: char) -> First {
         Self {
             has_epsilon: false,
-            characters: vec![ch]
+            characters: vec![symbol]
         }
     }
 
@@ -61,19 +61,19 @@ impl First {
     }
 
     fn get_first(non_terminal_firsts: &HashMap<NonTerminal, First>, string: impl Iterator<Item = Symbol>) -> First {
-        let mut res = First::from_empty_string();
+        let mut result = First::from_empty_string();
 
         for symbol in string {
             let cur_first = match symbol {
                 Symbol::Non(non_terminal) => non_terminal_firsts.get(&non_terminal).unwrap().clone(),
-                Symbol::Terminal(ch) => First::from_char(ch)
+                Symbol::Terminal(symbol) => First::from_char(symbol)
             };
-            res.concatenate(&cur_first);
-            if !res.has_epsilon {
+            result.concatenate(&cur_first);
+            if !result.has_epsilon {
                 break;
             }
         }
-        res
+        result
     }
 
     fn first_of_situation<'a>(non_terminal_firsts: &HashMap<NonTerminal, First>, situation: &GrammarSituation<'a>) -> Self {
@@ -138,23 +138,23 @@ impl<'a> LR1AutomatonState<'a> {
 
 impl<'a> FrozenLR1AutomatonState<'a> {
     fn goto_options(&self) -> Vec<Symbol> {
-        let mut res: Vec<Symbol> = self.situations.iter().map(|(situation, _)| {
+        let mut result: Vec<Symbol> = self.situations.iter().map(|(situation, _)| {
             situation.next()
         }).filter(|x| !x.is_none()).map(|x| x.unwrap()).collect();
-        res.sort();
-        res.dedup();
-        res
+        result.sort();
+        result.dedup();
+        result
     }
 
     fn goto(&self, non_terminal_firsts: &HashMap<NonTerminal, First>, grammar: &'a Grammar, next: Symbol) -> LR1AutomatonState<'a> {
-        let res: HashMap<GrammarSituation, First> = self.situations.iter().filter(|(situation, _)| {
+        let result: HashMap<GrammarSituation, First> = self.situations.iter().filter(|(situation, _)| {
             let next = situation.next().and_then(|x| if x == next {Some(())} else {None});
             next == Some(())
         }).map(|(situation, first)| {
             (situation.clone().move_point(), first.clone())
         }).collect();
         let mut new_state = LR1AutomatonState {
-            situations: res
+            situations: result
         };
         new_state.closure(non_terminal_firsts, grammar);
         new_state
@@ -242,8 +242,8 @@ impl ParsingAlgorithm for LR1Algorithm {
                     Symbol::Non(non_terminal) => {
                         goto[index].insert(non_terminal, new_index);
                     }
-                    Symbol::Terminal(ch) => {
-                        if !action[index].insert(Some(ch), LR1Action::Shift(new_index)).is_none() {
+                    Symbol::Terminal(symbol) => {
+                        if !action[index].insert(Some(symbol), LR1Action::Shift(new_index)).is_none() {
                             return None;
                         }
                     }
@@ -253,8 +253,8 @@ impl ParsingAlgorithm for LR1Algorithm {
                 if situation.next().is_none() {
                     let rule_index = *reverse_rules_list.get(situation.get_rule()).unwrap();
                     let cur_action = if rule_index == accept_index {LR1Action::Accept} else {LR1Action::Reduce(rule_index)};
-                    for ch in first.characters.iter() {
-                        if !action[index].insert(Some(*ch), cur_action).is_none() {
+                    for symbol in first.characters.iter() {
+                        if !action[index].insert(Some(*symbol), cur_action).is_none() {
                             return None;
                         }
                     }
@@ -432,19 +432,19 @@ pub mod tests {
     }
 
     fn gen_random_grammar(alphabet: &Vec<char>, non_terminals_count: usize, max_rule_len: usize, rule_count: usize) -> Grammar {
-        let mut res = Grammar::new();
-        let mut non_terminals = vec![res.starting];
+        let mut result = Grammar::new();
+        let mut non_terminals = vec![result.starting];
         for _ in 1..non_terminals_count {
-            non_terminals.push(res.new_non_terminal());
+            non_terminals.push(result.new_non_terminal());
         }
         let symbols = alphabet.iter().map(|x| Symbol::Terminal(*x))
                 .chain(non_terminals.iter().map(|x| Symbol::Non(*x))).collect::<Vec<Symbol>>();
         for _ in 0..rule_count {
             let left = non_terminals[random::<usize>() % non_terminals_count];
             let right = gen_random_word(&symbols, random::<usize>() % max_rule_len + 1);
-            res.add_rule(GrammarRule::new(left, right));
+            result.add_rule(GrammarRule::new(left, right));
         }
-        res
+        result
     }
 
     #[test]
@@ -459,7 +459,7 @@ pub mod tests {
 
         let alphabet: Vec<char> = (0..ALPHABET_SIZE).map(|x| (x + ('a' as u8)) as char).collect();
 
-        let mut cnt_success = 0;
+        let mut cnt_successes = 0;
         let mut cnt_predicts = 0;
 
         for _iter in 0..ITERATIONS {
@@ -478,10 +478,10 @@ pub mod tests {
                     cnt_predicts += 1;
                 }
             }
-            cnt_success += 1;
+            cnt_successes += 1;
         }
-        eprintln!("lr1 builds: {}\npredicts: {}", cnt_success, cnt_predicts);
-        assert!(cnt_success >= 10);
+        eprintln!("lr1 builds: {}\npredicts: {}", cnt_successes, cnt_predicts);
+        assert!(cnt_successes >= 10);
         assert!(cnt_predicts >= 10);
     }
 }
