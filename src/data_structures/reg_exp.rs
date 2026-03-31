@@ -1,3 +1,7 @@
+use crate::data_structures::deterministic::DeterministicAutomaton;
+use crate::data_structures::single_accepting::SingleAcceptingAutomaton;
+
+#[derive(Debug)]
 pub enum RegularExpression {
     Zero,
     One,
@@ -8,6 +12,10 @@ pub enum RegularExpression {
 }
 
 impl RegularExpression {
+    pub fn from(str: &str) -> Result<RegularExpression, String> {
+        Self::from_reverse_polish(&String::from(str))
+    }
+
     pub fn from_reverse_polish(str: &String) -> Result<RegularExpression, String> {
         let mut stack = Vec::<RegularExpression>::new();
         for ch in str.chars() {
@@ -68,6 +76,10 @@ impl RegularExpression {
                 format!("{}*", val.to_string())
             }
         }
+    }
+
+    pub fn compile(self) -> DeterministicAutomaton {
+        return DeterministicAutomaton::from(SingleAcceptingAutomaton::from_regular_expression(self).into_non_deterministic())
     }
 }
 

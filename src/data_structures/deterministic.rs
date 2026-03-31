@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::automaton_like::{AutomatonLike, DisplayableLikeAutomaton};
-use crate::non_deterministic::NonDeterministicAutomaton;
-use crate::graph::{Graph, DerivedFromGraph};
+use crate::data_structures::automaton_like::{AutomatonLike, DisplayableLikeAutomaton};
+use crate::data_structures::non_deterministic::NonDeterministicAutomaton;
+use crate::data_structures::graph::{Graph, DerivedFromGraph};
 
 #[derive(Clone, Debug)]
 pub struct DeterministicAutomaton {
@@ -120,6 +120,10 @@ impl DeterministicAutomaton {
         self.is_accepting[state]
     }
 
+    pub fn check(&self, str: &str) -> bool {
+        self.check_word(&String::from(str))
+    }
+
     pub fn into_fields(self) -> (Graph<char>, usize, Vec<bool>) {
         (self.graph, self.starting, self.is_accepting)
     }
@@ -130,7 +134,7 @@ mod tests {
     use super::*;
     use crate::data_structures::graph::DerivedFromGraphMut;
 
-    use crate::non_deterministic::tests::make_testing_aut;
+    use crate::data_structures::non_deterministic::tests::make_testing_aut;
 
     #[test]
     fn test_basic() {

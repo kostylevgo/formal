@@ -6,20 +6,13 @@ edition = "2021"
 [dependencies]
 rand = "0.8.5"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "formal"
 
 [[bin]]
-name = "task-deterministic"
-path = "src/task-deterministic.rs"
+name = "example-automatons"
+path = "examples/automatons.rs"
 
 [[bin]]
-name = "task-regular-parsing"
-path = "src/task-regular-parsing.rs"
-
-[[bin]]
-name = "task-earley"
-path = "src/task-earley.rs"
-
-[[bin]]
-name = "task-lr1"
-path = "src/task-lr1.rs"
+name = "example-grammars"
+path = "examples/grammars.rs"

@@ -126,7 +126,7 @@ impl SingleAcceptingAutomaton {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::non_deterministic::tests::make_testing_aut;
+    use crate::data_structures::non_deterministic::tests::make_testing_aut;
 
     #[test]
     fn test_already_single() {
